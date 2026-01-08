@@ -1,0 +1,11 @@
+name,email,roll_number,phone,college,student_group
+John Doe,john.doe@example.com,CS001,1234567890,MIT,Computer Science
+Jane Smith,jane.smith@example.com,CS002,1234567891,Stanford,Computer Science
+Alice Johnson,alice.johnson@example.com,CS003,1234567892,Harvard,Computer Science
+Bob Williams,bob.williams@example.com,CS004,1234567893,MIT,Computer Science
+Charlie Brown,charlie.brown@example.com,CS005,1234567894,Stanford,Computer Science
+Diana Prince,diana.prince@example.com,CS006,1234567895,Harvard,Data Science
+Eve Martinez,eve.martinez@example.com,DS001,1234567896,MIT,Data Science
+Frank Castle,frank.castle@example.com,DS002,1234567897,Stanford,Data Science
+Grace Hopper,grace.hopper@example.com,DS003,1234567898,Harvard,Data Science
+Henry Ford,henry.ford@example.com,ME001,1234567899,MIT,Mechanical Engineering
