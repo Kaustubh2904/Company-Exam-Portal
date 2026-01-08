@@ -1,0 +1,21 @@
+question,option_a,option_b,option_c,option_d,correct_answer,points
+"What is the time complexity of binary search?","O(n)","O(log n)","O(n^2)","O(1)","O(log n)",2
+"Which programming language is known for 'write once, run anywhere'?","Python","Java","C++","JavaScript","Java",1
+"What does SQL stand for?","Structured Query Language","Simple Query Language","Standard Query Language","System Query Language","Structured Query Language",1
+"Which data structure follows LIFO principle?","Queue","Stack","Array","Tree","Stack",2
+"What is the default port number for HTTP?","80","443","8080","3000","80",1
+"Which sorting algorithm has the best average case time complexity?","Bubble Sort","Selection Sort","Merge Sort","Insertion Sort","Merge Sort",3
+"What does API stand for?","Application Programming Interface","Advanced Programming Interface","Automated Programming Interface","Application Process Interface","Application Programming Interface",1
+"Which database is known as a NoSQL database?","MySQL","PostgreSQL","MongoDB","SQLite","MongoDB",2
+"What is the purpose of a constructor in OOP?","To destroy objects","To initialize objects","To copy objects","To compare objects","To initialize objects",2
+"Which protocol is used for secure web browsing?","HTTP","FTP","HTTPS","SMTP","HTTPS",2
+"What is the maximum value of a 32-bit signed integer?","2147483647","2147483648","4294967295","4294967296","2147483647",3
+"Which language is primarily used for web styling?","HTML","CSS","JavaScript","PHP","CSS",1
+"What does DOM stand for in web development?","Document Object Model","Data Object Model","Dynamic Object Model","Digital Object Model","Document Object Model",2
+"Which algorithm is used for finding shortest path?","Binary Search","Dijkstra's Algorithm","Quick Sort","Linear Search","Dijkstra's Algorithm",3
+"What is the base of hexadecimal number system?","8","10","16","2","16",1
+"Which design pattern ensures only one instance exists?","Factory","Singleton","Observer","Strategy","Singleton",2
+"What is the space complexity of recursive factorial function?","O(1)","O(n)","O(log n)","O(n^2)","O(n)",2
+"Which HTTP method is used to retrieve data?","POST","PUT","GET","DELETE","GET",1
+"What is polymorphism in OOP?","Data hiding","Multiple inheritance","Method overriding and overloading","Encapsulation","Method overriding and overloading",3
+"Which tool is used for version control?","Git","Docker","Jenkins","Maven","Git",1

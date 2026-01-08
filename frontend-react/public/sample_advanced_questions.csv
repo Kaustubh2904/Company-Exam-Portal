@@ -1,0 +1,16 @@
+question,option_a,option_b,option_c,option_d,correct_answer,points
+"What is the time complexity of the following code: for(i=0;i<n;i++) for(j=0;j<n;j++) print(i*j)?","O(n)","O(n^2)","O(log n)","O(n^3)","O(n^2)",3
+"Which of the following is NOT a characteristic of REST API?","Stateless","Cacheable","Uniform Interface","Session-based","Session-based",2
+"In React, what is the purpose of useEffect hook?","State management","Side effects handling","Component styling","Event handling","Side effects handling",2
+"What does ACID stand for in database transactions?","Atomicity, Consistency, Isolation, Durability","Automatic, Consistent, Independent, Durable","Abstract, Concrete, Isolated, Dynamic","Atomic, Concurrent, Integrated, Distributed","Atomicity, Consistency, Isolation, Durability",3
+"Which design pattern is used in the following: if(type=='circle') return new Circle(); else if(type=='square') return new Square();","Singleton","Factory","Observer","Strategy","Factory",2
+"What is the difference between '==' and '===' in JavaScript?","No difference","== checks type, === checks value","=== checks type and value, == checks only value","== is deprecated, use ===","=== checks type and value, == checks only value",3
+"Which SQL command is used to remove a table structure?","DELETE","TRUNCATE","DROP","REMOVE","DROP",2
+"In microservices architecture, what is the purpose of API Gateway?","Database management","Load balancing only","Single entry point and request routing","File storage","Single entry point and request routing",3
+"What is the main advantage of using Redis?","Persistent storage","In-memory data structure store","File-based database","Graph database","In-memory data structure store",2
+"Which HTTP status code indicates 'Resource Not Found'?","400","401","403","404","404",1
+"What is the purpose of Docker containers?","Code compilation","Application packaging and deployment","Database management","Network security","Application packaging and deployment",2
+"In agile development, what is a 'sprint'?","Bug fixing phase","Testing phase","Time-boxed iteration","Documentation phase","Time-boxed iteration",2
+"What is the main purpose of indexing in databases?","Data backup","Query performance optimization","Data encryption","Data validation","Query performance optimization",3
+"Which principle states 'Classes should be open for extension but closed for modification'?","Single Responsibility","Open/Closed","Liskov Substitution","Dependency Inversion","Open/Closed",2
+"What is the difference between authentication and authorization?","No difference","Authentication verifies identity, authorization grants permissions","Authorization verifies identity, authentication grants permissions","Both are same process","Authentication verifies identity, authorization grants permissions",3

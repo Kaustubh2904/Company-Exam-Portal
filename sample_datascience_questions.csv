@@ -1,0 +1,16 @@
+question,option_a,option_b,option_c,option_d,correct_answer,points
+"Which library is commonly used for data manipulation in Python?","NumPy","Pandas","Matplotlib","SciPy","Pandas",2
+"What does 'overfitting' mean in machine learning?","Model performs well on training and test data","Model performs poorly on both training and test data","Model performs well on training but poorly on test data","Model has too few parameters","Model performs well on training but poorly on test data",3
+"Which algorithm is best suited for classification problems?","Linear Regression","Logistic Regression","K-Means Clustering","PCA","Logistic Regression",2
+"What is the purpose of cross-validation?","Data cleaning","Model evaluation","Feature selection","Data visualization","Model evaluation",2
+"Which metric is used to evaluate regression models?","Accuracy","Precision","Recall","Mean Squared Error","Mean Squared Error",2
+"What does SQL GROUP BY clause do?","Sorts data","Filters data","Groups rows with same values","Joins tables","Groups rows with same values",2
+"Which visualization is best for showing correlation between two variables?","Bar chart","Pie chart","Scatter plot","Histogram","Scatter plot",1
+"What is the difference between supervised and unsupervised learning?","No difference","Supervised uses labeled data, unsupervised doesn't","Unsupervised uses labeled data, supervised doesn't","Both use same type of data","Supervised uses labeled data, unsupervised doesn't",2
+"Which technique is used for dimensionality reduction?","Linear Regression","K-Means","Principal Component Analysis","Decision Trees","Principal Component Analysis",3
+"What is the purpose of data normalization?","Data cleaning","Scale features to similar ranges","Remove duplicates","Handle missing values","Scale features to similar ranges",2
+"Which chart type is best for showing distribution of a single variable?","Scatter plot","Line chart","Histogram","Pie chart","Histogram",1
+"What does ETL stand for in data processing?","Extract, Transform, Load","Evaluate, Test, Launch","Execute, Track, Log","Estimate, Train, Learn","Extract, Transform, Load",2
+"Which statistical test is used to compare means of two groups?","Chi-square test","T-test","ANOVA","Correlation test","T-test",2
+"What is the purpose of feature engineering?","Model deployment","Creating new features from existing data","Data collection","Model evaluation","Creating new features from existing data",3
+"Which algorithm is used for clustering?","Linear Regression","Decision Tree","K-Means","Naive Bayes","K-Means",2
