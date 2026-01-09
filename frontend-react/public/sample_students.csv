@@ -1,0 +1,20 @@
+roll_number,name,email,college_name,student_group_name,batch_year
+CS001,John Doe,absky294@gmail.com,MIT,Computer Science,2025
+CS002,Jane Smith,jane.smith@college.edu,Stanford University,Computer Science,2025
+CS003,Mike Johnson,mike.johnson@college.edu,MIT,Electrical Engineering,2025
+CS004,Sarah Williams,sarah.williams@college.edu,Harvard University,Computer Science,2024
+CS005,David Brown,david.brown@college.edu,Stanford University,Mechanical Engineering,2025
+CS006,Emily Davis,emily.davis@college.edu,MIT,Computer Science,2025
+CS007,Chris Wilson,chris.wilson@college.edu,Harvard University,Civil Engineering,2024
+CS008,Anna Garcia,anna.garcia@college.edu,Stanford University,Computer Science,2025
+CS009,Robert Martinez,robert.martinez@college.edu,MIT,Electrical Engineering,2025
+CS010,Lisa Anderson,lisa.anderson@college.edu,Harvard University,Computer Science,2024
+CS011,Kevin Taylor,kevin.taylor@college.edu,Stanford University,Computer Science,2025
+CS012,Michelle Thomas,michelle.thomas@college.edu,MIT,Mechanical Engineering,2025
+CS013,Brian Hernandez,brian.hernandez@college.edu,Harvard University,Computer Science,2024
+CS014,Stephanie Moore,stephanie.moore@college.edu,Stanford University,Electrical Engineering,2025
+CS015,Daniel Martin,daniel.martin@college.edu,MIT,Computer Science,2025
+CS016,Amanda Jackson,amanda.jackson@college.edu,Harvard University,Civil Engineering,2024
+CS017,Matthew Thompson,matthew.thompson@college.edu,Stanford University,Computer Science,2025
+CS018,Nicole White,nicole.white@college.edu,MIT,Computer Science,2025
+CS019,Joshua Lopez,joshua.lopez@college.edu,Harvard University,Mechanical Engineering,2024
