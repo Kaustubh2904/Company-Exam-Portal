@@ -1039,7 +1039,7 @@ export default function CompanyDriveDetail() {
                                             alert(
                                               `Violation Details:\n\nDisqualification Reason: ${
                                                 result.disqualification_reason ||
-                                                'N/A'
+                                                'Attempted to use Unfair Means'
                                               }`
                                             );
                                           }
