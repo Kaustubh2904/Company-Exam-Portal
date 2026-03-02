@@ -141,6 +141,7 @@ def format_drive_response(drive: Drive, db: Session):
         "updated_at": drive.updated_at
     }
 
+
 @router.get("/drives", response_model=List[DriveResponse])
 def get_company_drives(
     skip: int = 0,

@@ -2,11 +2,24 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
+from pathlib import Path
 from app.database.connection import get_db
 from app.models import Company, Drive, College, StudentGroup
 from app.schemas.company import CompanyResponse, CompanyApprovalUpdate, CollegeResponse, StudentGroupResponse
 from app.schemas.drive import DriveResponse, AdminDriveApprovalUpdate
 from app.auth import get_admin_user
+
+LOGOS_DIR = Path(__file__).parent.parent.parent / "static" / "logos"
+
+
+def _delete_company_logo(logo_url: str) -> None:
+    """Remove logo file from disk if it exists"""
+    if not logo_url:
+        return
+    filename = logo_url.split("/")[-1]
+    logo_path = LOGOS_DIR / filename
+    if logo_path.exists():
+        logo_path.unlink()
 
 def format_drive_response(drive, db):
     """Format drive response with resolved target names and company info"""
@@ -129,23 +142,27 @@ def reject_company(
     db: Session = Depends(get_db),
     admin: dict = Depends(get_admin_user)
 ):
-    """Reject company registration (move to rejected status instead of deleting)"""
+    """Reject company registration — deletes the uploaded logo from disk"""
     from datetime import datetime
-    
+
     company = db.query(Company).filter(Company.id == company_id).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
-    
-    # Mark as rejected with proper status
+
+    # Delete logo file from disk since company is rejected
+    _delete_company_logo(company.logo_url)
+    company.logo_url = None
+
+    # Mark as rejected
     company.status = "rejected"
     company.is_approved = False  # Keep for backward compatibility
     company.admin_notes = rejection_data.get("reason", "Rejected by admin")
     company.reviewed_at = datetime.utcnow()
     company.reviewed_by = admin.username
-    
+
     db.commit()
     db.refresh(company)
-    
+
     return {"message": "Company rejected successfully", "company_id": company_id}
 
 @router.delete("/companies/{company_id}")

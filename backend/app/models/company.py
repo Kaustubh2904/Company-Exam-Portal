@@ -57,6 +57,7 @@ This is an automated email. Please do not reply to this message.""")
     # Relationships
     company_drives = relationship("Drive", back_populates="company", cascade="all, delete-orphan")
     students = relationship("Student", back_populates="company", cascade="all, delete-orphan")
+    tickets = relationship("Ticket", back_populates="company", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Company(id={self.id}, name='{self.company_name}', status='{self.status}')>"

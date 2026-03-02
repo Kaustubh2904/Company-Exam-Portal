@@ -1,11 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from datetime import timedelta
+from pathlib import Path
+import uuid
 from app.database.connection import get_db
 from app.models import Admin, Company
-from app.schemas.auth import AdminLogin, CompanyLogin, CompanyRegister, Token, UserResponse
+from app.schemas.auth import AdminLogin, CompanyLogin, Token, UserResponse
 from app.auth.security import verify_password, get_password_hash, create_access_token
 from app.database.config import settings
+
+ALLOWED_LOGO_TYPES = {"image/png", "image/jpeg", "image/jpg"}
+LOGO_MAX_SIZE_MB = 2
+LOGOS_DIR = Path(__file__).parent.parent.parent / "static" / "logos"
 
 router = APIRouter()
 
@@ -44,38 +50,58 @@ def admin_login(admin_data: AdminLogin, db: Session = Depends(get_db)):
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/company/register", response_model=dict)
-def company_register(company_data: CompanyRegister, db: Session = Depends(get_db)):
-    """Company registration (requires admin approval)"""
-    # Check if email already exists
-    existing_company = db.query(Company).filter(Company.email == company_data.email).first()
-    if existing_company:
+def company_register(
+    company_name: str = Form(...),
+    username: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    logo: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Company registration with logo upload (requires admin approval)"""
+
+    # ── Validate logo ──────────────────────────────────────────
+    if logo.content_type not in ALLOWED_LOGO_TYPES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered"
+            detail=f"Invalid logo type '{logo.content_type}'. Only PNG and JPEG are allowed.",
         )
-    
-    # Check if username already exists
-    existing_username = db.query(Company).filter(Company.username == company_data.username).first()
-    if existing_username:
+    logo_contents = logo.file.read()
+    size_mb = len(logo_contents) / (1024 * 1024)
+    if size_mb > LOGO_MAX_SIZE_MB:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already taken"
+            detail=f"Logo too large ({size_mb:.1f} MB). Maximum allowed size is {LOGO_MAX_SIZE_MB} MB.",
         )
-    
-    # Create new company
-    hashed_password = get_password_hash(company_data.password)
+
+    # ── Check duplicates ───────────────────────────────────────
+    if db.query(Company).filter(Company.email == email).first():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
+    if db.query(Company).filter(Company.username == username).first():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already taken")
+
+    # ── Save logo to disk ──────────────────────────────────────
+    ext = "png" if logo.content_type == "image/png" else "jpg"
+    # Temp filename using username (company ID not yet known); renamed if needed
+    filename = f"reg_{username}_{uuid.uuid4().hex}.{ext}"
+    LOGOS_DIR.mkdir(parents=True, exist_ok=True)
+    logo_path = LOGOS_DIR / filename
+    with open(logo_path, "wb") as f:
+        f.write(logo_contents)
+
+    # ── Create company ─────────────────────────────────────────
+    hashed_password = get_password_hash(password)
     company = Company(
-        company_name=company_data.company_name,
-        username=company_data.username,
-        email=company_data.email,
+        company_name=company_name,
+        username=username,
+        email=email,
         hashed_password=hashed_password,
-        logo_url=company_data.logo_url
+        logo_url=f"/static/logos/{filename}",
     )
-    
     db.add(company)
     db.commit()
     db.refresh(company)
-    
+
     return {"message": "Company registered successfully. Waiting for admin approval."}
 
 @router.post("/company/login", response_model=Token)

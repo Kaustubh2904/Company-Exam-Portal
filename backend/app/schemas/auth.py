@@ -11,7 +11,7 @@ class CompanyRegister(BaseModel):
     username: str
     email: EmailStr
     password: str
-    logo_url: Optional[str] = None
+    # logo is accepted as a file upload (multipart/form-data) at registration
 
 class CompanyLogin(BaseModel):
     username: str

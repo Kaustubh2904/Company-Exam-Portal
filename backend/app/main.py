@@ -1,13 +1,15 @@
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 import logging
 import sys
 from contextlib import asynccontextmanager
 from datetime import datetime
-from app.routes import auth_router, admin_router, company_router
+from app.routes import auth_router, admin_router, company_router, company_ticket_router, admin_ticket_router
 from app.routes.student import router as student_router
-from app.database import create_tables
+from app.database import seed_initial_data
 from app.database.config import settings
 
 # Configure logging
@@ -25,17 +27,31 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("🚀 Starting Company Exam Portal API...")
-    logger.info("📊 Initializing database...")
-    
+    logger.info("📊 Running database migrations...")
+
     try:
-        create_tables()
-        logger.info("✅ Database initialized successfully!")
+        # Run alembic migrations programmatically (equivalent to `alembic upgrade head`)
+        from alembic.config import Config
+        from alembic import command
+        from pathlib import Path
+
+        alembic_cfg = Config(str(Path(__file__).parent.parent / "alembic.ini"))
+        alembic_cfg.set_main_option("script_location", str(Path(__file__).parent.parent / "alembic"))
+        command.upgrade(alembic_cfg, "head")
+        logger.info("✅ Migrations applied successfully!")
     except Exception as e:
-        logger.error(f"❌ Database initialization failed: {str(e)}")
+        logger.error(f"❌ Migration failed: {str(e)}")
         raise
-    
+
+    try:
+        seed_initial_data()
+        logger.info("✅ Seed data ready!")
+    except Exception as e:
+        logger.error(f"❌ Seed data failed: {str(e)}")
+        raise
+
     yield
-    
+
     # Shutdown
     logger.info("🛑 Shutting down Company Exam Portal API...")
 
@@ -88,6 +104,13 @@ app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(admin_router, prefix="/api/admin", tags=["Admin"])
 app.include_router(company_router, prefix="/api/company", tags=["Company"])
 app.include_router(student_router, prefix="/api/student", tags=["Student"])
+app.include_router(company_ticket_router, prefix="/api/company/tickets", tags=["Company Tickets"])
+app.include_router(admin_ticket_router, prefix="/api/admin", tags=["Admin Tickets"])
+
+# Serve static files (company logos etc.)
+static_dir = Path(__file__).parent.parent / "static"
+static_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 @app.get("/")
 async def root():

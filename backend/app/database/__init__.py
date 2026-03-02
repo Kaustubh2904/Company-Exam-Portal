@@ -4,15 +4,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def create_tables():
-    """Create all database tables"""
-    Base.metadata.create_all(bind=engine)
-    
-    # Seed initial data after creating tables
-    seed_initial_data()
-
 def drop_tables():
-    """Drop all database tables"""
+    """Drop all database tables — use with caution"""
     Base.metadata.drop_all(bind=engine)
 
 def seed_initial_data():

@@ -8,6 +8,7 @@ from app.models.question import Question
 from app.models.drive_target import DriveTarget
 from app.models.student import Student
 from app.models.student_response import StudentResponse
+from app.models.ticket import Ticket
 
 # Export all models
 __all__ = [
@@ -19,5 +20,6 @@ __all__ = [
     "Question",
     "DriveTarget",
     "Student",
-    "StudentResponse"
+    "StudentResponse",
+    "Ticket"
 ]
