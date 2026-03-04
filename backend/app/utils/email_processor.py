@@ -1,6 +1,7 @@
 import re
 from datetime import datetime
 from typing import Dict, Any
+from app.database.config import settings
 
 # Template variables that companies can use
 TEMPLATE_VARIABLES = {
@@ -40,7 +41,7 @@ class EmailTemplateProcessor:
             'drive_title': 'Software Engineer Position',
             'company_name': 'TechCorp Solutions',
             'password': 'SoftwareEngineer2024',
-            'login_url': 'http://localhost:5174',
+            'login_url': settings.frontend_url,
             'start_time': 'December 15, 2024 at 10:00 AM',
             'duration': '90'
         }
@@ -75,16 +76,14 @@ class EmailTemplateProcessor:
         """
         if dt is None:
             return 'TBD'
-        
-        from datetime import datetime
-        
+
         if isinstance(dt, str):
             # If string, parse it
             try:
                 dt_obj = datetime.fromisoformat(dt.replace('Z', '+00:00'))
                 # Remove timezone info to get naive datetime (which represents UTC)
                 dt = dt_obj.replace(tzinfo=None)
-            except:
+            except Exception:
                 return dt
         
         # At this point, dt is a naive datetime object representing UTC time
@@ -103,7 +102,7 @@ class EmailTemplateProcessor:
             'drive_title': drive.title,
             'company_name': company.company_name,
             'password': EmailTemplateProcessor.generate_password(drive.title),
-            'login_url': 'http://localhost:5174',  # Student portal URL
+            'login_url': settings.frontend_url,  # Student portal URL
             'start_time': EmailTemplateProcessor.format_datetime(drive.window_start),
             'duration': str(drive.exam_duration_minutes or 60)
         }

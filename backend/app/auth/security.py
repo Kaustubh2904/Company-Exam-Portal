@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Optional
 import hashlib
+import hmac
 import secrets
 from jose import JWTError, jwt
 from fastapi import HTTPException, status
@@ -16,7 +17,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
                                           plain_password.encode('utf-8'),
                                           bytes.fromhex(salt),
                                           100000)
-        return stored_hash == password_hash.hex()
+        return hmac.compare_digest(stored_hash, password_hash.hex())
     except (ValueError, AttributeError):
         return False
 

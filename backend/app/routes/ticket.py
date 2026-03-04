@@ -33,19 +33,6 @@ def raise_ticket(
     current_company: Company = Depends(get_company_user),
 ):
     """Company raises a new support ticket to admin"""
-
-    if ticket_data.category not in VALID_CATEGORIES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid category '{ticket_data.category}'. Must be one of: {VALID_CATEGORIES}",
-        )
-
-    if ticket_data.priority not in VALID_PRIORITIES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid priority '{ticket_data.priority}'. Must be one of: {VALID_PRIORITIES}",
-        )
-
     new_ticket = Ticket(
         title=ticket_data.title,
         description=ticket_data.description,

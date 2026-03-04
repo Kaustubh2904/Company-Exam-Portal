@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Header
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import csv
@@ -10,6 +11,7 @@ from datetime import datetime, timedelta
 from app.database.connection import get_db
 from app.database.config import settings
 from app.models import Drive, Question, Student, College, StudentGroup, DriveTarget, Company
+from app.models.student_response import StudentResponse as StudentResponseModel
 from app.schemas.drive import DriveCreate, DriveUpdate, DriveResponse, DriveStatusUpdate
 from app.schemas.question import QuestionResponse
 from app.schemas.student import StudentResponse
@@ -20,6 +22,7 @@ from app.schemas.email import (
 from app.schemas.company import CollegeResponse, StudentGroupResponse
 from app.auth import get_company_user, get_company_or_admin_user
 from app.utils.email_processor import EmailTemplateProcessor, TEMPLATE_VARIABLES
+from app.routes.admin import format_drive_response
 
 router = APIRouter()
 
@@ -34,30 +37,21 @@ def get_drive_status(drive: Drive) -> str:
 
     now = datetime.utcnow()
 
-    # Check if drive has been manually ended
+    # Check if drive has been manually ended or calculated end has passed
     if drive.actual_window_end and now >= drive.actual_window_end:
         return "completed"
 
-    # Check if drive is manually started and still active
+    # actual_window_end is always set when actual_window_start is set (= actual_window_start + duration_minutes)
+    # so if we reach here with actual_window_start set, the window is still open
     if drive.actual_window_start:
-        # Calculate when window should end based on actual start
-        if drive.window_start and drive.window_end:
-            window_duration = drive.window_end - drive.window_start
-            expected_end = drive.actual_window_start + window_duration
-            if now >= expected_end:
-                return "completed"
-            return "live"
+        return "live"
 
-    # Check scheduled window times
-    if drive.window_start and drive.window_end:
-        if now >= drive.window_end:
-            return "completed"
-        if now >= drive.window_start:
-            return "live"
-        if now < drive.window_start:
-            return "upcoming"
+    # Drive has not been manually started — use scheduled window only for "upcoming" indicator
+    if drive.window_start and now < drive.window_start:
+        return "upcoming"
 
-    return drive.status
+    # Window start has passed but company hasn't manually started — still upcoming
+    return "upcoming"
 
 def get_effective_company_id(
     current_user: dict = Depends(get_company_or_admin_user),
@@ -85,61 +79,6 @@ def get_effective_company_id(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied"
         )
-
-def format_drive_response(drive: Drive, db: Session):
-    """Format drive response with resolved target information"""
-    targets = []
-    for target in drive.targets:
-        college_name = None
-        student_group_name = None
-
-        if target.college_id:
-            college = db.query(College).filter(College.id == target.college_id).first()
-            college_name = college.name if college else None
-        elif target.custom_college_name:
-            college_name = target.custom_college_name
-
-        if target.student_group_id:
-            group = db.query(StudentGroup).filter(StudentGroup.id == target.student_group_id).first()
-            student_group_name = group.name if group else None
-        elif target.custom_student_group_name:
-            student_group_name = target.custom_student_group_name
-
-        targets.append({
-            "id": target.id,
-            "college_id": target.college_id,
-            "custom_college_name": target.custom_college_name,
-            "student_group_id": target.student_group_id,
-            "custom_student_group_name": target.custom_student_group_name,
-            "batch_year": target.batch_year,
-            "college_name": college_name,
-            "student_group_name": student_group_name
-        })
-
-    # Get company name
-    company = db.query(Company).filter(Company.id == drive.company_id).first()
-    company_name = company.company_name if company else None
-
-    return {
-        "id": drive.id,
-        "company_id": drive.company_id,
-        "company_name": company_name,
-        "title": drive.title,
-        "description": drive.description,
-        "category": drive.category or "Technical MCQ",  # Default if null
-        "targets": targets,
-        "window_start": drive.window_start,  # May be null, but schema allows it
-        "window_end": drive.window_end,      # May be null, but schema allows it
-        "actual_window_start": drive.actual_window_start,
-        "actual_window_end": drive.actual_window_end,
-        "exam_duration_minutes": drive.exam_duration_minutes or 60,  # Default if null
-        "duration_minutes": drive.duration_minutes,  # Window duration in minutes
-        "status": drive.status,
-        "is_approved": drive.is_approved,
-        "admin_notes": drive.admin_notes,
-        "created_at": drive.created_at,
-        "updated_at": drive.updated_at
-    }
 
 
 @router.get("/drives", response_model=List[DriveResponse])
@@ -199,7 +138,7 @@ def create_drive(
         window_end=window_end_naive,
         exam_duration_minutes=drive_data.exam_duration_minutes,
         duration_minutes=window_duration_minutes,  # Store the calculated window duration
-        status="draft"
+        status="draft",
     )
 
     db.add(drive)
@@ -306,7 +245,6 @@ def update_drive(
         if drive.window_start and drive.window_end:
             window_duration = drive.window_end - drive.window_start
             drive.duration_minutes = int(window_duration.total_seconds() / 60)
-            print(f"DEBUG: Recalculated duration_minutes: {drive.duration_minutes}")
 
     # Update targets if provided
     if drive_data.targets is not None:
@@ -452,15 +390,22 @@ def duplicate_drive(
     if not original_drive:
         raise HTTPException(status_code=404, detail="Drive not found")
 
-    # Create new drive with copied data
+    # Block duplication of completed drives
+    current_status = get_drive_status(original_drive)
+    if current_status == "completed":
+        raise HTTPException(status_code=400, detail="Completed drives cannot be duplicated")
+
+    # Create new drive copying only description, category, and exam duration
+    # window times, actual times, and approval state are reset
     new_drive = Drive(
         company_id=company.id,
-        title=f"{original_drive.title} (Copy)",
+        title=f"Copy of {original_drive.title}",
         description=original_drive.description,
-        category=original_drive.category or "Technical MCQ",  # Default category if None
-        window_start=None,  # Reset schedule
-        window_end=None,    # Reset schedule
-        exam_duration_minutes=original_drive.exam_duration_minutes or 60,  # Default 60 minutes if None
+        category=original_drive.category,
+        window_start=None,
+        window_end=None,
+        exam_duration_minutes=original_drive.exam_duration_minutes,
+        duration_minutes=None,
         status="draft",
         is_approved=False
     )
@@ -495,6 +440,25 @@ def duplicate_drive(
         )
         db.add(new_question)
 
+    # Copy pre-exam students (only those who have not started the exam yet)
+    original_students = db.query(Student).filter(
+        Student.drive_id == drive_id,
+        Student.exam_started_at == None
+    ).all()
+    for student in original_students:
+        new_student = Student(
+            drive_id=new_drive.id,
+            company_id=company.id,
+            name=student.name,
+            email=student.email,
+            roll_number=student.roll_number,
+            phone=student.phone,
+            college_name=student.college_name,
+            student_group_name=student.student_group_name,
+            access_token=student.access_token
+        )
+        db.add(new_student)
+
     db.commit()
     db.refresh(new_drive)
 
@@ -521,156 +485,6 @@ def get_drive_questions(
 
     questions = db.query(Question).filter(Question.drive_id == drive_id).all()
     return questions
-
-@router.post("/drives/{drive_id}/questions/csv-upload")
-def upload_questions_csv(
-    drive_id: int,
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    company: dict = Depends(get_company_user)
-):
-    """Upload questions from CSV file. Expected columns: question, option_a, option_b, option_c, option_d, correct_answer, points"""
-    drive = db.query(Drive).filter(
-        Drive.id == drive_id,
-        Drive.company_id == company.id
-    ).first()
-
-    if not drive:
-        raise HTTPException(status_code=404, detail="Drive not found")
-
-    if drive.is_approved:
-        raise HTTPException(status_code=400, detail="Cannot add questions to approved drive")
-
-    if not file.filename.endswith('.csv'):
-        raise HTTPException(status_code=400, detail="File must be CSV format")
-
-    try:
-        content = file.file.read().decode('utf-8')
-        csv_reader = csv.DictReader(io.StringIO(content))
-
-        required_columns = ['question', 'option_a', 'option_b', 'option_c', 'option_d', 'correct_answer']
-        if not all(col in csv_reader.fieldnames for col in required_columns):
-            raise HTTPException(status_code=400, detail=f"CSV must contain columns: {', '.join(required_columns)}")
-
-        questions = []
-        for row_num, row in enumerate(csv_reader, start=2):  # Start from 2 because of header
-            try:
-                points = int(row.get('points', 1))
-
-                # Validate correct_answer is one of the options
-                options = [row['option_a'], row['option_b'], row['option_c'], row['option_d']]
-                if row['correct_answer'] not in options:
-                    raise ValueError(f"Row {row_num}: correct_answer must be one of the provided options")
-
-                question = Question(
-                    drive_id=drive_id,
-                    question_text=row['question'].strip(),
-                    option_a=row['option_a'].strip(),
-                    option_b=row['option_b'].strip(),
-                    option_c=row['option_c'].strip(),
-                    option_d=row['option_d'].strip(),
-                    correct_answer=row['correct_answer'].strip(),
-                    points=points
-                )
-                questions.append(question)
-
-            except (ValueError, KeyError) as e:
-                raise HTTPException(status_code=400, detail=f"Error in row {row_num}: {str(e)}")
-
-        if not questions:
-            raise HTTPException(status_code=400, detail="No valid questions found in CSV")
-
-        db.add_all(questions)
-        db.commit()
-
-        return {"message": f"Successfully uploaded {len(questions)} questions from CSV"}
-
-    except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="File encoding not supported. Please use UTF-8")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error processing CSV: {str(e)}")
-
-@router.post("/drives/{drive_id}/students/csv-upload")
-def upload_students_csv(
-    drive_id: int,
-    file: UploadFile = File(...),
-    db: Session = Depends(get_db),
-    company: dict = Depends(get_company_user)
-):
-    """Upload students from CSV file. Expected columns: name, email, roll_number, phone, college, student_group"""
-    import uuid
-
-    drive = db.query(Drive).filter(
-        Drive.id == drive_id,
-        Drive.company_id == company.id
-    ).first()
-
-    if not drive:
-        raise HTTPException(status_code=404, detail="Drive not found")
-
-    if drive.is_approved:
-        raise HTTPException(status_code=400, detail="Cannot add students to approved drive")
-
-    if not file.filename.endswith('.csv'):
-        raise HTTPException(status_code=400, detail="File must be CSV format")
-
-    try:
-        content = file.file.read().decode('utf-8')
-        csv_reader = csv.DictReader(io.StringIO(content))
-
-        required_columns = ['name', 'email', 'roll_number']
-        if not all(col in csv_reader.fieldnames for col in required_columns):
-            raise HTTPException(
-                status_code=400,
-                detail=f"CSV must contain columns: {', '.join(required_columns)}. Optional: phone, college, student_group"
-            )
-
-        students = []
-        for row_num, row in enumerate(csv_reader, start=2):  # Start from 2 because of header
-            try:
-                # Check if student already exists in this drive (by email)
-                existing_student = db.query(Student).filter(
-                    Student.drive_id == drive_id,
-                    Student.email == row['email'].strip().lower()
-                ).first()
-
-                if existing_student:
-                    continue  # Skip duplicate students
-
-                # Generate unique access token
-                access_token = str(uuid.uuid4())
-
-                student = Student(
-                    drive_id=drive_id,
-                    company_id=company.id,
-                    name=row['name'].strip(),
-                    email=row['email'].strip().lower(),
-                    roll_number=row['roll_number'].strip(),
-                    phone=row.get('phone', '').strip() if row.get('phone', '').strip() else None,
-                    college_name=row.get('college', '').strip() if row.get('college', '').strip() else None,
-                    student_group_name=row.get('student_group', '').strip() if row.get('student_group', '').strip() else None,
-                    access_token=access_token
-                )
-                students.append(student)
-
-            except (ValueError, KeyError) as e:
-                raise HTTPException(status_code=400, detail=f"Error in row {row_num}: {str(e)}")
-
-        if not students:
-            raise HTTPException(status_code=400, detail="No new students found in CSV (duplicates skipped)")
-
-        db.add_all(students)
-        db.commit()
-
-        return {
-            "message": f"Successfully uploaded {len(students)} new students from CSV",
-            "count": len(students)
-        }
-
-    except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="File encoding not supported. Please use UTF-8")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error processing CSV: {str(e)}")
 
 @router.get("/drives/{drive_id}/students", response_model=List[StudentResponse])
 def get_drive_students(
@@ -980,7 +794,7 @@ async def upload_questions_csv(
     db: Session = Depends(get_db),
     company: dict = Depends(get_company_user)
 ):
-    """Upload questions from CSV file"""
+    """Upload questions from CSV file. Expected columns: question, option_a, option_b, option_c, option_d, correct_answer, points"""
     # Verify drive ownership
     drive = db.query(Drive).filter(
         Drive.id == drive_id,
@@ -1009,7 +823,7 @@ async def upload_questions_csv(
         for row_num, row in enumerate(csv_reader, start=2):  # Start from row 2 (after header)
             try:
                 # Validate required fields
-                required_fields = ['question_text', 'option_a', 'option_b', 'option_c', 'option_d', 'correct_answer']
+                required_fields = ['question', 'option_a', 'option_b', 'option_c', 'option_d', 'correct_answer']
                 missing_fields = [field for field in required_fields if not row.get(field, '').strip()]
 
                 if missing_fields:
@@ -1017,23 +831,27 @@ async def upload_questions_csv(
                     error_count += 1
                     continue
 
-                # Validate correct answer
-                correct_answer = row['correct_answer'].strip().upper()
-                if correct_answer not in ['A', 'B', 'C', 'D']:
-                    errors.append(f"Row {row_num}: Correct answer must be A, B, C, or D")
+                # Validate correct_answer is one of the provided options
+                option_a = row['option_a'].strip()
+                option_b = row['option_b'].strip()
+                option_c = row['option_c'].strip()
+                option_d = row['option_d'].strip()
+                correct_answer = row['correct_answer'].strip()
+
+                if correct_answer not in [option_a, option_b, option_c, option_d]:
+                    errors.append(f"Row {row_num}: correct_answer must match one of the four options exactly")
                     error_count += 1
                     continue
 
                 # Create question
                 question = Question(
                     drive_id=drive_id,
-                    question_text=row['question_text'].strip(),
-                    option_a=row['option_a'].strip(),
-                    option_b=row['option_b'].strip(),
-                    option_c=row['option_c'].strip(),
-                    option_d=row['option_d'].strip(),
+                    question_text=row['question'].strip(),
+                    option_a=option_a,
+                    option_b=option_b,
+                    option_c=option_c,
+                    option_d=option_d,
                     correct_answer=correct_answer,
-                    difficulty=row.get('difficulty', 'medium').strip().lower(),
                     points=int(row.get('points', 1))
                 )
 
@@ -1065,7 +883,7 @@ async def upload_students_csv(
     db: Session = Depends(get_db),
     company: dict = Depends(get_company_user)
 ):
-    """Upload students from CSV file"""
+    """Upload students from CSV file. Expected columns: name, email, roll_number, phone, college, student_group"""
     # Verify drive ownership
     drive = db.query(Drive).filter(
         Drive.id == drive_id,
@@ -1102,7 +920,7 @@ async def upload_students_csv(
                 # Check if student already exists for this drive
                 existing_student = db.query(Student).filter(
                     Student.drive_id == drive_id,
-                    Student.email == row['email'].strip()
+                    Student.email == row['email'].strip().lower()
                 ).first()
 
                 if existing_student:
@@ -1110,36 +928,19 @@ async def upload_students_csv(
                     error_count += 1
                     continue
 
-                # Get or create college
                 college_name = row.get('college', '').strip()
-                college = None
-                if college_name:
-                    college = db.query(College).filter(College.name == college_name).first()
-                    if not college:
-                        # Create new college (will need admin approval)
-                        college = College(name=college_name, is_approved=False)
-                        db.add(college)
-                        db.flush()  # To get the college ID
-
-                # Get or create student group
                 group_name = row.get('student_group', '').strip()
-                student_group = None
-                if group_name:
-                    student_group = db.query(StudentGroup).filter(StudentGroup.name == group_name).first()
-                    if not student_group:
-                        # Create new student group (will need admin approval)
-                        student_group = StudentGroup(name=group_name, is_approved=False)
-                        db.add(student_group)
-                        db.flush()  # To get the group ID
 
                 # Create student
                 student = Student(
                     drive_id=drive_id,
+                    company_id=company.id,
                     name=row['name'].strip(),
-                    email=row['email'].strip(),
+                    email=row['email'].strip().lower(),
                     roll_number=row['roll_number'].strip(),
-                    college_id=college.id if college else None,
-                    student_group_id=student_group.id if student_group else None
+                    phone=row.get('phone', '').strip() or None,
+                    college_name=college_name or None,
+                    student_group_name=group_name or None,
                 )
 
                 db.add(student)
@@ -1194,31 +995,16 @@ def start_exam(
     now = datetime.utcnow()
     drive.actual_window_start = now
 
-    # Calculate actual window end time based on exam requirements
-    # duration_minutes = how long the window should stay open
-    # exam_duration_minutes = how long each student gets after they start
+    # Calculate actual window end time.
+    # Invariant: actual_window_end = actual_window_start + window_duration_minutes
+    # Use duration_minutes if set (= window_end - window_start at creation time),
+    # otherwise fall back to the scheduled window length.
     if drive.duration_minutes:
-        # Use the intended window duration
         window_duration_minutes = drive.duration_minutes
-        print(f"DEBUG: Using duration_minutes for window: {drive.duration_minutes} minutes")
-    elif drive.exam_duration_minutes:
-        # Fallback: If no window duration set, use exam duration + reasonable buffer
-        # This ensures late-starting students can complete their exam
-        buffer_minutes = max(60, drive.exam_duration_minutes // 3)  # At least 1 hour buffer, or 33% of exam time
-        window_duration_minutes = drive.exam_duration_minutes + buffer_minutes
-        print(f"DEBUG: No duration_minutes set, calculated from exam_duration_minutes: {drive.exam_duration_minutes} + {buffer_minutes} buffer = {window_duration_minutes} minutes")
     else:
-        # Fallback to scheduled window duration for backward compatibility
-        scheduled_duration = drive.window_end - drive.window_start
-        window_duration_minutes = int(scheduled_duration.total_seconds() / 60)
-        print(f"DEBUG: Using scheduled window duration fallback: {window_duration_minutes} minutes")
+        window_duration_minutes = int((drive.window_end - drive.window_start).total_seconds() / 60)
 
-    # Set the actual window end time
-    drive.actual_window_end = now + timedelta(minutes=window_duration_minutes)
-
-    print(f"DEBUG: actual_window_start: {drive.actual_window_start}")
-    print(f"DEBUG: actual_window_end: {drive.actual_window_end}")
-    print(f"DEBUG: total window duration: {window_duration_minutes} minutes")
+    drive.actual_window_end = drive.actual_window_start + timedelta(minutes=window_duration_minutes)
 
     db.commit()
     db.refresh(drive)
@@ -1303,44 +1089,28 @@ def get_exam_status(
     if not drive:
         raise HTTPException(status_code=404, detail="Drive not found")
 
-    # Check if students exist
     student_count = db.query(Student).filter(Student.drive_id == drive_id).count()
     has_students = student_count > 0
-
-    # Calculate time remaining until window closes
-    time_remaining_minutes = None
     now = datetime.utcnow()
 
-    # Determine which window end time to use
-    window_end = drive.actual_window_end if drive.actual_window_end else drive.window_end
+    # actual_window_end is always set at start time (= actual_window_start + duration_minutes)
+    # and overwritten to now if the exam is ended manually early.
+    # So time_remaining is simply actual_window_end - now while the exam is ongoing.
+    if drive.actual_window_start and drive.actual_window_end:
+        seconds_left = (drive.actual_window_end - now).total_seconds()
+        time_remaining_seconds = max(0, int(seconds_left))
+        time_remaining_minutes = max(0.0, seconds_left / 60)
+    else:
+        time_remaining_seconds = None
+        time_remaining_minutes = None
 
-    if drive.actual_window_start and window_end and not drive.actual_window_end:
-        # Exam is ongoing, calculate time until window closes
-        time_until_close = window_end - now
-        time_remaining_minutes = time_until_close.total_seconds() / 60
-
-        # If window has passed, it should be auto-closed
-        if time_remaining_minutes <= 0:
-            time_remaining_minutes = 0
-
-    # Determine exam state
+    # Exam state
     if not drive.actual_window_start:
         exam_state = "not_started"
-    elif drive.actual_window_end:
-        # If actual_window_end exists, check if it's in the past or very close to now (within 1 second)
-        time_diff = (now - drive.actual_window_end).total_seconds()
-        if time_diff >= -1:  # If ended in the past or within 1 second from now
-            exam_state = "ended"
-        else:
-            # End time is in the future
-            exam_state = "ongoing"
-    elif drive.actual_window_start:
-        exam_state = "ongoing"
+    elif now >= drive.actual_window_end:
+        exam_state = "ended"
     else:
-        exam_state = "not_started"
-
-    # Convert time remaining to seconds for consistency
-    time_remaining_seconds = int(time_remaining_minutes * 60) if time_remaining_minutes and time_remaining_minutes > 0 else None
+        exam_state = "ongoing"
 
     return {
         "drive_id": drive_id,
@@ -1353,7 +1123,7 @@ def get_exam_status(
         "time_remaining": time_remaining_seconds,
         "time_remaining_minutes": time_remaining_minutes,
         "can_start": drive.is_approved and not drive.actual_window_start and has_students,
-        "can_end": drive.actual_window_start and not drive.actual_window_end,
+        "can_end": drive.actual_window_start and drive.actual_window_end and now < drive.actual_window_end,
         "status": get_drive_status(drive),
         "is_approved": drive.is_approved,
         "has_students": has_students,
@@ -1434,9 +1204,6 @@ def export_drive_results(
     company_id: int = Depends(get_effective_company_id)
 ):
     """Export drive results as CSV (summary or detailed format)"""
-    from fastapi.responses import StreamingResponse
-    from app.models.student_response import StudentResponse as StudentResponseModel
-
     # Verify drive belongs to company
     drive = db.query(Drive).filter(
         Drive.id == drive_id,

@@ -78,12 +78,8 @@ class DriveResponse(BaseModel):
     question_count: Optional[int] = None
     student_count: Optional[int] = None
 
-    # Legacy fields (can be None, only for old migration purposes)
-    question_type: Optional[str] = None
+    # Window duration (window_end - window_start, preserved for actual_window_end calculation)
     duration_minutes: Optional[int] = None
-    scheduled_start: Optional[datetime] = None
-    actual_start: Optional[datetime] = None
-    actual_end: Optional[datetime] = None
 
     status: str  # draft, submitted, approved, rejected, upcoming, live, completed, suspended
     is_approved: bool
@@ -95,7 +91,15 @@ class DriveResponse(BaseModel):
         from_attributes = True
 
 class DriveStatusUpdate(BaseModel):
-    status: str  # draft, submitted, approved, rejected, upcoming, live, ongoing, completed
+    status: str  # Only company-settable statuses: draft, submitted
+
+    @field_validator('status')
+    @classmethod
+    def validate_status(cls, v):
+        allowed = {"draft", "submitted"}
+        if v not in allowed:
+            raise ValueError(f"Status must be one of: {', '.join(sorted(allowed))}")
+        return v
 
 class AdminDriveApprovalUpdate(BaseModel):
     is_approved: bool

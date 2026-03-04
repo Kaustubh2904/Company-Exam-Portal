@@ -5,7 +5,7 @@ from pathlib import Path
 import uuid
 from app.database.connection import get_db
 from app.models import Admin, Company
-from app.schemas.auth import AdminLogin, CompanyLogin, Token, UserResponse
+from app.schemas.auth import AdminLogin, CompanyLogin, Token
 from app.auth.security import verify_password, get_password_hash, create_access_token
 from app.database.config import settings
 

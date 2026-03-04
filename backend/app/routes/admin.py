@@ -4,10 +4,13 @@ from typing import List
 from datetime import datetime
 from pathlib import Path
 from app.database.connection import get_db
-from app.models import Company, Drive, College, StudentGroup
+from app.models import Company, Drive, College, StudentGroup, Question
+from app.models.student import Student
+from app.models.student_response import StudentResponse as StudentResponseModel
 from app.schemas.company import CompanyResponse, CompanyApprovalUpdate, CollegeResponse, StudentGroupResponse
 from app.schemas.drive import DriveResponse, AdminDriveApprovalUpdate
 from app.auth import get_admin_user
+from app.routes.company import get_drive_status
 
 LOGOS_DIR = Path(__file__).parent.parent.parent / "static" / "logos"
 
@@ -65,12 +68,7 @@ def format_drive_response(drive, db):
         "actual_window_start": drive.actual_window_start,
         "actual_window_end": drive.actual_window_end,
         "exam_duration_minutes": drive.exam_duration_minutes,
-        # Legacy fields (kept in DB but not used)
-        "question_type": None,
-        "duration_minutes": None,
-        "scheduled_start": None,
-        "actual_start": None,
-        "actual_end": None,
+        "duration_minutes": drive.duration_minutes,
         "status": drive.status,
         "is_approved": drive.is_approved,
         "admin_notes": drive.admin_notes,
@@ -112,8 +110,6 @@ def approve_company(
     admin: dict = Depends(get_admin_user)
 ):
     """Approve company registration"""
-    from datetime import datetime
-    
     company = db.query(Company).filter(Company.id == company_id).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
@@ -143,8 +139,6 @@ def reject_company(
     admin: dict = Depends(get_admin_user)
 ):
     """Reject company registration — deletes the uploaded logo from disk"""
-    from datetime import datetime
-
     company = db.query(Company).filter(Company.id == company_id).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
@@ -218,7 +212,6 @@ def get_all_drives(
         drive_dict = format_drive_response(drive, db)
         # Override status with calculated status if approved
         if drive.is_approved:
-            from app.routes.company import get_drive_status
             drive_dict["status"] = get_drive_status(drive)
         result.append(drive_dict)
     
@@ -256,10 +249,6 @@ def suspend_drive(
     admin: dict = Depends(get_admin_user)
 ):
     """Suspend a drive and delete all student responses. Drive, questions, and students are preserved."""
-    from datetime import datetime
-    from ..models.student import Student
-    from ..models.student_response import StudentResponse
-    
     drive = db.query(Drive).filter(Drive.id == drive_id).first()
     if not drive:
         raise HTTPException(status_code=404, detail="Drive not found")
@@ -281,8 +270,8 @@ def suspend_drive(
     # Delete all responses
     deleted_responses = 0
     if student_ids:
-        deleted_responses = db.query(StudentResponse).filter(
-            StudentResponse.student_id.in_(student_ids)
+        deleted_responses = db.query(StudentResponseModel).filter(
+            StudentResponseModel.student_id.in_(student_ids)
         ).delete(synchronize_session=False)
     
     # Reset student exam state (keep uploaded student data but clear exam progress)
@@ -347,8 +336,6 @@ def get_drive_detail(
     admin: dict = Depends(get_admin_user)
 ):
     """Get detailed view of a drive including questions and students for admin review"""
-    from app.models import Question, Student
-    
     drive = db.query(Drive).filter(Drive.id == drive_id).first()
     if not drive:
         raise HTTPException(status_code=404, detail="Drive not found")
@@ -748,49 +735,33 @@ def get_exam_status_admin(
     db: Session = Depends(get_db),
     admin: dict = Depends(get_admin_user)
 ):
-    """Get exam status for a drive (Admin view) - using new window fields"""
+    """Get exam status for a drive (Admin view)"""
     drive = db.query(Drive).filter(Drive.id == drive_id).first()
     if not drive:
         raise HTTPException(status_code=404, detail="Drive not found")
-    
+
     now = datetime.utcnow()
-    
-    # Count students
     student_count = len(drive.students)
     has_students = student_count > 0
-    
-    # Calculate time remaining until window closes
-    time_remaining_minutes = None
-    time_remaining_seconds = None
-    
-    # Determine which window end time to use
-    window_end = drive.actual_window_end if drive.actual_window_end else drive.window_end
-    
-    if drive.actual_window_start and window_end and not drive.actual_window_end:
-        # Exam is ongoing, calculate time until window closes
-        time_until_close = window_end - now
-        time_remaining_minutes = time_until_close.total_seconds() / 60
-        time_remaining_seconds = int(time_until_close.total_seconds())
-        
-        # If window has passed, it should be 0
-        if time_remaining_minutes <= 0:
-            time_remaining_minutes = 0
-            time_remaining_seconds = 0
 
-    # Determine exam state using new fields
+    # actual_window_end is always set at start time (= actual_window_start + duration_minutes)
+    # and overwritten to now if the exam is ended manually early.
+    if drive.actual_window_start and drive.actual_window_end:
+        seconds_left = (drive.actual_window_end - now).total_seconds()
+        time_remaining_seconds = max(0, int(seconds_left))
+        time_remaining_minutes = max(0.0, seconds_left / 60)
+    else:
+        time_remaining_seconds = None
+        time_remaining_minutes = None
+
+    # Exam state
     if not drive.actual_window_start:
         exam_state = "not_started"
-    elif drive.actual_window_end and drive.actual_window_end <= now:
-        # Only "ended" if actual_window_end is in the past
+    elif now >= drive.actual_window_end:
         exam_state = "ended"
-    elif drive.actual_window_start and not drive.actual_window_end:
-        exam_state = "ongoing"
-    elif drive.actual_window_start and drive.actual_window_end and drive.actual_window_end > now:
-        # Window has both start and end, but end is in the future
-        exam_state = "ongoing"
     else:
-        exam_state = "not_started"
-    
+        exam_state = "ongoing"
+
     return {
         "drive_id": drive.id,
         "exam_state": exam_state,
@@ -802,7 +773,7 @@ def get_exam_status_admin(
         "time_remaining": time_remaining_seconds,
         "time_remaining_minutes": time_remaining_minutes,
         "can_start": drive.is_approved and not drive.actual_window_start and has_students,
-        "can_end": drive.actual_window_start and not drive.actual_window_end,
+        "can_end": drive.actual_window_start and drive.actual_window_end and now < drive.actual_window_end,
         "is_approved": drive.is_approved,
         "has_students": has_students,
         "student_count": student_count

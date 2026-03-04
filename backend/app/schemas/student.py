@@ -26,7 +26,7 @@ class ExamQuestion(BaseModel):
     option_b: str
     option_c: str
     option_d: str
-    marks: int
+    points: int
 
     class Config:
         from_attributes = True
@@ -36,11 +36,11 @@ class ExamDataResponse(BaseModel):
     drive_id: int
     drive_title: str
     drive_description: Optional[str] = None
-    duration_minutes: int  # Required - exam duration per student
-    scheduled_start: Optional[datetime] = None  # Window start
-    actual_start: Optional[datetime] = None  # Actual window start
-    actual_end: Optional[datetime] = None  # Actual window end
-    expected_end: Optional[datetime] = None  # Calculated: student.exam_started_at + duration
+    exam_duration_minutes: int  # Per-student exam duration
+    window_start: Optional[datetime] = None       # Scheduled window start
+    actual_window_start: Optional[datetime] = None  # Actual window start
+    actual_window_end: Optional[datetime] = None    # Actual window end
+    expected_end: Optional[datetime] = None  # Calculated: student.exam_started_at + exam_duration_minutes
     question_count: int
     total_marks: int
     questions: List[ExamQuestion]
@@ -88,8 +88,6 @@ class StudentResponse(BaseModel):
     phone: Optional[str] = None
     college_name: Optional[str] = None
     student_group_name: Optional[str] = None
-    access_token: str
-    question_order: Optional[List[int]] = None
     exam_started_at: Optional[datetime] = None
     exam_submitted_at: Optional[datetime] = None
     score: Optional[int] = None

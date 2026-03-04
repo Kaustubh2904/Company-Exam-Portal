@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime
 
@@ -13,6 +13,20 @@ class TicketCreate(BaseModel):
     description: str = Field(..., min_length=10, description="Detailed description of the issue")
     category: str = Field(default="general", description="One of: billing, drive, technical, general")
     priority: str = Field(default="medium", description="One of: low, medium, high, urgent")
+
+    @field_validator('category')
+    @classmethod
+    def validate_category(cls, v):
+        if v not in VALID_CATEGORIES:
+            raise ValueError(f"Invalid category '{v}'. Must be one of: {VALID_CATEGORIES}")
+        return v
+
+    @field_validator('priority')
+    @classmethod
+    def validate_priority(cls, v):
+        if v not in VALID_PRIORITIES:
+            raise ValueError(f"Invalid priority '{v}'. Must be one of: {VALID_PRIORITIES}")
+        return v
 
 
 class TicketResponse(BaseModel):

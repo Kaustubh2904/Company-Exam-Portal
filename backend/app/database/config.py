@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     
     # CORS
     allowed_origins: str = os.getenv("ALLOWED_ORIGINS", "http://localhost:3001,http://127.0.0.1:3001")
+
+    # Frontend
+    frontend_url: str = os.getenv("FRONTEND_URL", "http://localhost:5174")
     
     # Email settings
     smtp_server: str = os.getenv("SMTP_SERVER", "smtp.gmail.com")
