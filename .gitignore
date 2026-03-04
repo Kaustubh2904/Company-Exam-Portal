@@ -3,6 +3,7 @@
 # Security & Environment
 .env
 .env
+.env.production
 *.key
 *.pem
 config/secrets.json

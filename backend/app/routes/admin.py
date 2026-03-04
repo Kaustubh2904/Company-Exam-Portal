@@ -10,7 +10,7 @@ from app.models.student_response import StudentResponse as StudentResponseModel
 from app.schemas.company import CompanyResponse, CompanyApprovalUpdate, CollegeResponse, StudentGroupResponse
 from app.schemas.drive import DriveResponse, AdminDriveApprovalUpdate
 from app.auth import get_admin_user
-from app.routes.company import get_drive_status
+from app.utils.drive_utils import get_drive_status, format_drive_response
 
 LOGOS_DIR = Path(__file__).parent.parent.parent / "static" / "logos"
 
@@ -23,58 +23,6 @@ def _delete_company_logo(logo_url: str) -> None:
     logo_path = LOGOS_DIR / filename
     if logo_path.exists():
         logo_path.unlink()
-
-def format_drive_response(drive, db):
-    """Format drive response with resolved target names and company info"""
-    targets = []
-    for target in drive.targets:
-        college_name = target.custom_college_name
-        if not college_name and target.college_id:
-            college = db.query(College).filter(College.id == target.college_id).first()
-            college_name = college.name if college else "Unknown College"
-        
-        group_name = target.custom_student_group_name
-        if not group_name and target.student_group_id:
-            group = db.query(StudentGroup).filter(StudentGroup.id == target.student_group_id).first()
-            group_name = group.name if group else "Unknown Group"
-        
-        targets.append({
-            "id": target.id,
-            "college_id": target.college_id,
-            "custom_college_name": target.custom_college_name,
-            "college_name": college_name,
-            "student_group_id": target.student_group_id,
-            "custom_student_group_name": target.custom_student_group_name,
-            "student_group_name": group_name,
-            "batch_year": target.batch_year
-        })
-    
-    # Get company information
-    company_name = "Unknown Company"
-    if drive.company_id:
-        company = db.query(Company).filter(Company.id == drive.company_id).first()
-        company_name = company.company_name if company else "Unknown Company"
-    
-    return {
-        "id": drive.id,
-        "company_id": drive.company_id,
-        "company_name": company_name,
-        "title": drive.title,
-        "description": drive.description,
-        "category": drive.category,
-        "targets": targets,
-        "window_start": drive.window_start,
-        "window_end": drive.window_end,
-        "actual_window_start": drive.actual_window_start,
-        "actual_window_end": drive.actual_window_end,
-        "exam_duration_minutes": drive.exam_duration_minutes,
-        "duration_minutes": drive.duration_minutes,
-        "status": drive.status,
-        "is_approved": drive.is_approved,
-        "admin_notes": drive.admin_notes,
-        "created_at": drive.created_at,
-        "updated_at": drive.updated_at
-    }
 
 router = APIRouter()
 

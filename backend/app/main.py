@@ -126,36 +126,43 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint for production monitoring"""
+    db_status = "connected"
+    redis_status = "connected"
+
     try:
-        # Test database connection
         from app.database.connection import engine
         from sqlalchemy import text
-        
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        
-        return {
-            "status": "healthy", 
-            "message": "API is running",
-            "version": "1.0.0",
-            "environment": settings.environment,
-            "database": "connected",
-            "timestamp": datetime.utcnow().isoformat()
-        }
     except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
-        return JSONResponse(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={
-                "status": "unhealthy",
-                "message": "Database connection failed",
-                "version": "1.0.0",
-                "environment": settings.environment,
-                "database": "disconnected",
-                "timestamp": datetime.utcnow().isoformat(),
-                "error": str(e) if settings.debug else "Database unavailable"
-            }
-        )
+        logger.error(f"Health check DB failed: {str(e)}")
+        db_status = "disconnected"
+
+    try:
+        from app.utils.redis_client import get_redis
+        r = get_redis()
+        if r is None:
+            redis_status = "unavailable"
+        else:
+            r.ping()
+    except Exception as e:
+        logger.error(f"Health check Redis failed: {str(e)}")
+        redis_status = "disconnected"
+
+    overall = "healthy" if db_status == "connected" else "unhealthy"
+
+    payload = {
+        "status": overall,
+        "version": "1.0.0",
+        "environment": settings.environment,
+        "database": db_status,
+        "redis": redis_status,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+    if overall == "unhealthy":
+        return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content=payload)
+    return payload
 
 if __name__ == "__main__":
     import uvicorn

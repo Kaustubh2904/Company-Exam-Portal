@@ -9,7 +9,7 @@ class Question(Base):
     __tablename__ = "questions"
     
     id = Column(Integer, primary_key=True, index=True)
-    drive_id = Column(Integer, ForeignKey("drives.id", ondelete="CASCADE"), nullable=False)
+    drive_id = Column(Integer, ForeignKey("drives.id", ondelete="CASCADE"), nullable=False, index=True)
     question_text = Column(Text, nullable=False)
     option_a = Column(String, nullable=False)
     option_b = Column(String, nullable=False)

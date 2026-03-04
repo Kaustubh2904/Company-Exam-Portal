@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Request
 from sqlalchemy.orm import Session
 from datetime import timedelta
 from pathlib import Path
@@ -8,6 +8,7 @@ from app.models import Admin, Company
 from app.schemas.auth import AdminLogin, CompanyLogin, Token
 from app.auth.security import verify_password, get_password_hash, create_access_token
 from app.database.config import settings
+from app.utils.redis_client import check_rate_limit
 
 ALLOWED_LOGO_TYPES = {"image/png", "image/jpeg", "image/jpg"}
 LOGO_MAX_SIZE_MB = 2
@@ -16,8 +17,17 @@ LOGOS_DIR = Path(__file__).parent.parent.parent / "static" / "logos"
 router = APIRouter()
 
 @router.post("/admin/login", response_model=Token)
-def admin_login(admin_data: AdminLogin, db: Session = Depends(get_db)):
+def admin_login(admin_data: AdminLogin, req: Request, db: Session = Depends(get_db)):
     """Admin login"""
+
+    # Rate limit: 5 attempts per IP per minute
+    client_ip = req.client.host if req.client else "unknown"
+    if not check_rate_limit("admin_login", client_ip, max_requests=5):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Please wait a minute and try again."
+        )
+
     # Check if admin exists, if not create default admin
     admin = db.query(Admin).filter(Admin.username == admin_data.username).first()
     
@@ -105,8 +115,17 @@ def company_register(
     return {"message": "Company registered successfully. Waiting for admin approval."}
 
 @router.post("/company/login", response_model=Token)
-def company_login(company_data: CompanyLogin, db: Session = Depends(get_db)):
+def company_login(company_data: CompanyLogin, req: Request, db: Session = Depends(get_db)):
     """Company login"""
+
+    # Rate limit: 10 attempts per IP per minute
+    client_ip = req.client.host if req.client else "unknown"
+    if not check_rate_limit("company_login", client_ip, max_requests=10):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Please wait a minute and try again."
+        )
+
     company = db.query(Company).filter(Company.username == company_data.username).first()
     
     if not company or not verify_password(company_data.password, company.hashed_password):

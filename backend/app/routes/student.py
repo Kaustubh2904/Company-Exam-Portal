@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Header
+from fastapi import APIRouter, Depends, HTTPException, status, Header, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from typing import List, Optional
@@ -15,7 +15,12 @@ from app.schemas.student import (
     ExamQuestion, ViolationRequest, ViolationResponse,
     AnswerSubmission, ExamSubmissionRequest, ExamSubmissionResponse
 )
-from app.routes.company import get_drive_status
+from app.utils.drive_utils import get_drive_status
+from app.utils.redis_client import (
+    cache_get_questions, cache_set_questions,
+    cache_get_session, cache_set_session, cache_invalidate_session,
+    check_rate_limit,
+)
 
 router = APIRouter()
 
@@ -52,9 +57,21 @@ def get_current_student(token: str, db: Session = Depends(get_db)):
 @router.post("/auth/login", response_model=StudentAuthResponse)
 def student_login(
     request: StudentLoginRequest,
+    req: Request,
     db: Session = Depends(get_db)
 ):
     """Login student with email and access token"""
+
+    # Rate limit by access_token (not IP) — safe for shared college/exam-center WiFi.
+    # Each student's token is unique, so this only blocks repeated attempts
+    # on the same credential, not the whole building.
+    # 5 attempts per 5 minutes per token.
+    if not check_rate_limit("student_login", request.access_token, max_requests=5, window_seconds=300):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts for this token. Please wait 5 minutes and try again."
+        )
+
     student = db.query(Student).filter(
         and_(
             Student.email == request.email,
@@ -78,6 +95,16 @@ def student_login(
 
     # Calculate dynamic drive status
     calculated_status = get_drive_status(drive)
+
+    session_data = {
+        "student_id": student.id,
+        "name": student.name,
+        "email": student.email,
+        "drive_id": drive.id,
+        "is_disqualified": student.is_disqualified,
+        "disqualification_reason": student.disqualification_reason,
+    }
+    cache_set_session(student.access_token, session_data)
 
     return StudentAuthResponse(
         access_token=student.access_token,
@@ -274,31 +301,59 @@ def get_exam_questions(
             detail="Question order not generated"
         )
 
-    # Fetch questions
-    questions = db.query(Question).filter(
-        Question.id.in_(question_order)
-    ).all()
+    # Try question cache first; fall back to DB on miss
+    cached = cache_get_questions(drive.id)
+    if cached is not None:
+        questions_dict = {q["id"]: q for q in cached}
+        ordered_questions_data = [questions_dict[qid] for qid in question_order if qid in questions_dict]
+        total_marks = sum(q["points"] for q in ordered_questions_data)
+        exam_questions = [
+            ExamQuestion(
+                id=q["id"],
+                question_text=q["question_text"],
+                option_a=q["option_a"],
+                option_b=q["option_b"],
+                option_c=q["option_c"],
+                option_d=q["option_d"],
+                points=q["points"]
+            )
+            for q in ordered_questions_data
+        ]
+    else:
+        # Fetch from DB and populate cache
+        questions = db.query(Question).filter(
+            Question.id.in_(question_order)
+        ).all()
+        questions_dict_db = {q.id: q for q in questions}
+        ordered_questions = [questions_dict_db[qid] for qid in question_order if qid in questions_dict_db]
 
-    # Sort questions according to student's order
-    questions_dict = {q.id: q for q in questions}
-    ordered_questions = [questions_dict[qid] for qid in question_order if qid in questions_dict]
-
-    # Calculate total marks
-    total_marks = sum(q.points for q in ordered_questions)
-
-    # Convert to response schema (without correct_answer)
-    exam_questions = [
-        ExamQuestion(
-            id=q.id,
-            question_text=q.question_text,
-            option_a=q.option_a,
-            option_b=q.option_b,
-            option_c=q.option_c,
-            option_d=q.option_d,
-            points=q.points
-        )
-        for q in ordered_questions
-    ]
+        total_marks = sum(q.points for q in ordered_questions)
+        exam_questions = [
+            ExamQuestion(
+                id=q.id,
+                question_text=q.question_text,
+                option_a=q.option_a,
+                option_b=q.option_b,
+                option_c=q.option_c,
+                option_d=q.option_d,
+                points=q.points
+            )
+            for q in ordered_questions
+        ]
+        # Store all drive questions in cache (superset — includes correct_answer for scoring)
+        cache_set_questions(drive.id, [
+            {
+                "id": q.id,
+                "question_text": q.question_text,
+                "option_a": q.option_a,
+                "option_b": q.option_b,
+                "option_c": q.option_c,
+                "option_d": q.option_d,
+                "points": q.points,
+                "correct_answer": q.correct_answer,
+            }
+            for q in ordered_questions
+        ])
 
     # Calculate expected end time based on individual student's start time
     expected_end = None
@@ -411,6 +466,10 @@ def record_violation(
     db.commit()
     db.refresh(student)
 
+    # If disqualified, bust the session cache so re-validation hits DB
+    if is_disqualified:
+        cache_invalidate_session(student.access_token)
+
     return ViolationResponse(
         success=True,
         is_disqualified=is_disqualified,
@@ -427,6 +486,15 @@ def submit_exam(
     db: Session = Depends(get_db)
 ):
     """Submit exam with all answers"""
+
+    # Rate limit by student token (not IP) — safe for shared college/exam-center WiFi.
+    # 3 attempts per hour per student — prevents double-submit storms without
+    # affecting other students on the same network.
+    if not check_rate_limit("exam_submit", student.access_token, max_requests=3, window_seconds=3600):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many submit requests. Please wait before trying again."
+        )
 
     # Check if exam started
     if not student.exam_started_at:
@@ -470,8 +538,9 @@ def submit_exam(
     ).all()
     questions_dict = {q.id: q for q in questions}
 
-    # Calculate score and save responses
+    # Calculate score and build response records
     score = 0
+    response_mappings = []
 
     for answer in request.answers:
         question = questions_dict.get(answer.question_id)
@@ -494,17 +563,19 @@ def submit_exam(
                 score += question.points
                 is_correct = True
 
-        # Create student response record
-        response = StudentResponse(
-            student_id=student.id,
-            question_id=answer.question_id,
-            drive_id=student.drive_id,
-            selected_option=answer.selected_option,
-            is_correct=is_correct,
-            marked_for_review=answer.marked_for_review,
-            answered_at=now
-        )
-        db.add(response)
+        response_mappings.append({
+            "student_id": student.id,
+            "question_id": answer.question_id,
+            "drive_id": student.drive_id,
+            "selected_option": answer.selected_option,
+            "is_correct": is_correct,
+            "marked_for_review": answer.marked_for_review,
+            "answered_at": now,
+        })
+
+    # Bulk insert all responses in a single DB round-trip
+    if response_mappings:
+        db.bulk_insert_mappings(StudentResponse, response_mappings)
 
     # Update student record
     student.score = score
@@ -513,6 +584,9 @@ def submit_exam(
 
     db.commit()
     db.refresh(student)
+
+    # Invalidate cached session — student is now in a terminal state
+    cache_invalidate_session(student.access_token)
 
     percentage = (score / total_marks * 100) if total_marks > 0 else 0
 

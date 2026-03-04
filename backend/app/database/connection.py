@@ -25,11 +25,12 @@ def get_database_url():
 try:
     engine = create_engine(
         get_database_url(),
-        pool_pre_ping=True,  # Validate connections before use
-        pool_recycle=3600,   # Recycle connections every hour
-        pool_size=5,         # Connection pool size
-        max_overflow=10,     # Additional connections allowed
-        echo=False  # Disable SQL query logging
+        pool_pre_ping=True,   # Validate connections before use
+        pool_recycle=3600,    # Recycle connections every hour
+        pool_size=20,         # Concurrent DB connections (was 5)
+        max_overflow=40,      # Extra connections under peak load (was 10)
+        pool_timeout=30,      # Wait max 30s for a free connection before raising
+        echo=False            # Disable SQL query logging
     )
 except Exception as e:
     logger.error(f"❌ Failed to create database engine: {str(e)}")

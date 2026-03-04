@@ -9,9 +9,9 @@ class StudentResponse(Base):
     __tablename__ = "student_responses"
     
     id = Column(Integer, primary_key=True, index=True)
-    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
+    student_id = Column(Integer, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
     question_id = Column(Integer, ForeignKey("questions.id", ondelete="CASCADE"), nullable=False)
-    drive_id = Column(Integer, ForeignKey("drives.id", ondelete="CASCADE"), nullable=False)
+    drive_id = Column(Integer, ForeignKey("drives.id", ondelete="CASCADE"), nullable=False, index=True)
     
     # Response data
     selected_option = Column(String(1), nullable=True)  # 'a', 'b', 'c', 'd' or None if not answered

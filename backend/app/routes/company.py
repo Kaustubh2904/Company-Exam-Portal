@@ -22,36 +22,9 @@ from app.schemas.email import (
 from app.schemas.company import CollegeResponse, StudentGroupResponse
 from app.auth import get_company_user, get_company_or_admin_user
 from app.utils.email_processor import EmailTemplateProcessor, TEMPLATE_VARIABLES
-from app.routes.admin import format_drive_response
+from app.utils.drive_utils import get_drive_status, format_drive_response
 
 router = APIRouter()
-
-def get_drive_status(drive: Drive) -> str:
-    """Calculate drive status on-the-fly based on current time and window times"""
-    if drive.status == "suspended":
-        return "suspended"
-    if drive.status in ["draft", "submitted", "rejected"]:
-        return drive.status
-    if not drive.is_approved:
-        return drive.status
-
-    now = datetime.utcnow()
-
-    # Check if drive has been manually ended or calculated end has passed
-    if drive.actual_window_end and now >= drive.actual_window_end:
-        return "completed"
-
-    # actual_window_end is always set when actual_window_start is set (= actual_window_start + duration_minutes)
-    # so if we reach here with actual_window_start set, the window is still open
-    if drive.actual_window_start:
-        return "live"
-
-    # Drive has not been manually started — use scheduled window only for "upcoming" indicator
-    if drive.window_start and now < drive.window_start:
-        return "upcoming"
-
-    # Window start has passed but company hasn't manually started — still upcoming
-    return "upcoming"
 
 def get_effective_company_id(
     current_user: dict = Depends(get_company_or_admin_user),

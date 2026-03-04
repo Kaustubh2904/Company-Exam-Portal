@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     environment: str = os.getenv("ENVIRONMENT", "development")
     debug: bool = os.getenv("DEBUG", "true").lower() == "true"
     
+    # Redis
+    redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
     # CORS
     allowed_origins: str = os.getenv("ALLOWED_ORIGINS", "http://localhost:3001,http://127.0.0.1:3001")
 
