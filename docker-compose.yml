@@ -5,13 +5,13 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
-      POSTGRES_DB: ${POSTGRES_DB:-cxpc}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin@1234
+      POSTGRES_DB: cxpc
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-cxpc}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cxpc"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -40,12 +40,11 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file:
-      - ./backend/.env.production
+      - ./backend/.env
     environment:
       # Override localhost URLs with Docker service names
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-changeme}@db:5432/${POSTGRES_DB:-cxpc}
+      DATABASE_URL: postgresql+psycopg://postgres:admin%401234@db:5432/cxpc
       REDIS_URL: redis://redis:6379/0
-      ENVIRONMENT: production
     ports:
       - "8000:8000"
     volumes:

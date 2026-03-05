@@ -27,21 +27,6 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("🚀 Starting Company Exam Portal API...")
-    logger.info("📊 Running database migrations...")
-
-    try:
-        # Run alembic migrations programmatically (equivalent to `alembic upgrade head`)
-        from alembic.config import Config
-        from alembic import command
-        from pathlib import Path
-
-        alembic_cfg = Config(str(Path(__file__).parent.parent / "alembic.ini"))
-        alembic_cfg.set_main_option("script_location", str(Path(__file__).parent.parent / "alembic"))
-        command.upgrade(alembic_cfg, "head")
-        logger.info("✅ Migrations applied successfully!")
-    except Exception as e:
-        logger.error(f"❌ Migration failed: {str(e)}")
-        raise
 
     try:
         seed_initial_data()
@@ -63,8 +48,6 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Configure CORS based on environment
-# Allow both frontend-react (5173) and student-portal (5174)
 default_origins = [
     "http://localhost:5173",
     "http://localhost:5174",
@@ -72,11 +55,18 @@ default_origins = [
     "http://127.0.0.1:5174"
 ]
 
-allowed_origins = settings.allowed_origins.split(",") if hasattr(settings, 'allowed_origins') and settings.allowed_origins else default_origins
+env_origins = (
+    [o.strip() for o in settings.allowed_origins.split(",")]
+    if hasattr(settings, "allowed_origins") and settings.allowed_origins
+    else []
+)
+
+allowed_origins = list(set(default_origins + env_origins))
+logger.info(f"✅ CORS allowed origins: {allowed_origins}")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins if settings.environment == "production" else ["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -33,16 +33,12 @@ COPY . .
 # Non-root user for security
 RUN useradd --no-create-home --shell /bin/false appuser \
     && mkdir -p /app/static/logos \
-    && chown -R appuser:appuser /app
+    && chown -R appuser:appuser /app \
+    && chmod +x /app/entrypoint.sh
 USER appuser
 
 # Expose API port
 EXPOSE 8000
 
-# Uvicorn: 4 workers, forward logs to stdout, no reload in production
-CMD ["uvicorn", "app.main:app", \
-     "--host", "0.0.0.0", \
-     "--port", "8000", \
-     "--workers", "4", \
-     "--log-level", "info", \
-     "--no-access-log"]
+# Run migrations first (single process), then start uvicorn workers
+CMD ["/app/entrypoint.sh"]
