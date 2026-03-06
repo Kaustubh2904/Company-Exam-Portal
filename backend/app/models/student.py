@@ -34,8 +34,6 @@ class Student(Base):
     total_marks = Column(Integer, nullable=True)
 
     # Anti-cheat fields
-    violation_details = Column(JSON, nullable=True)  # {tab_switch: 0, fullscreen_exit: 0, right_click: 0, screenshot: 0, copy: 0, paste: 0}
-    total_violations = Column(Integer, default=0)  # Total count of all violations
     is_disqualified = Column(Boolean, default=False)
     disqualification_reason = Column(String(255), nullable=True)
 

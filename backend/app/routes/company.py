@@ -1156,8 +1156,6 @@ def get_drive_results(
             "exam_submitted_at": student.exam_submitted_at,
             "is_disqualified": student.is_disqualified,
             "disqualification_reason": student.disqualification_reason,
-            "violation_count": student.total_violations or 0,
-            "violation_details": student.violation_details
         })
 
     return {

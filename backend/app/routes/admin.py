@@ -227,7 +227,6 @@ def suspend_drive(
         student.exam_started_at = None
         student.exam_submitted_at = None
         student.question_order = None
-        student.violation_details = None
         student.score = None
         student.total_marks = None
     

@@ -49,10 +49,10 @@ app = FastAPI(
 )
 
 default_origins = [
-    "http://localhost:5173",
-    "http://localhost:5174",
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:5174"
+    "http://localhost:5300",
+    "http://localhost:5301",
+    "http://127.0.0.1:5300",
+    "http://127.0.0.1:5301"
 ]
 
 env_origins = (

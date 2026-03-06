@@ -1,6 +1,6 @@
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
-from typing import Optional, List, Dict
+from typing import Optional, List
 
 # Schema for student login request
 class StudentLoginRequest(BaseModel):
@@ -47,17 +47,15 @@ class ExamDataResponse(BaseModel):
     student_question_order: List[int]
     exam_started_at: Optional[datetime] = None
 
-# Schema for submitting a violation
+# Schema for reporting a disqualification from the frontend
 class ViolationRequest(BaseModel):
-    violation_type: str  # 'tab_switch', 'fullscreen_exit', 'right_click', 'screenshot', 'copy', 'paste'
+    disqualification_reason: str  # Reason provided by frontend (e.g. "Exceeded tab switch limit")
 
 # Schema for violation response
 class ViolationResponse(BaseModel):
     success: bool
     is_disqualified: bool
     disqualification_reason: Optional[str]
-    current_violations: Dict[str, int]
-    total_violations: int
 
 # Schema for individual answer submission
 class AnswerSubmission(BaseModel):
@@ -92,8 +90,6 @@ class StudentResponse(BaseModel):
     exam_submitted_at: Optional[datetime] = None
     score: Optional[int] = None
     total_marks: Optional[int] = None
-    violation_details: Optional[Dict[str, int]] = None
-    total_violations: int = 0
     is_disqualified: bool = False
     disqualification_reason: Optional[str] = None
     created_at: datetime
@@ -117,8 +113,6 @@ class StudentResultResponse(BaseModel):
     exam_submitted_at: Optional[datetime]
     is_disqualified: bool
     disqualification_reason: Optional[str]
-    violation_details: Optional[Dict[str, int]]
-    total_violations: int = 0
 
     class Config:
         from_attributes = True

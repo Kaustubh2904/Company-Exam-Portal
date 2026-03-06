@@ -24,18 +24,6 @@ from app.utils.redis_client import (
 
 router = APIRouter()
 
-# Violation thresholds 
-VIOLATION_THRESHOLDS = {
-    "tab_switch": 3,
-    "fullscreen_exit": 3,
-    "right_click": 3,
-    "screenshot": 1,
-    "copy": None,  # Warning only
-    "paste": None  # Warning only
-}
-
-VALID_VIOLATION_TYPES = set(VIOLATION_THRESHOLDS.keys())
-
 # Dependency to get current student from token
 def get_current_student(token: str, db: Session = Depends(get_db)):
     student = db.query(Student).filter(Student.access_token == token).first()
@@ -234,14 +222,6 @@ def start_exam(
     # Update student record with individual exam start time
     student.question_order = question_ids
     student.exam_started_at = now
-    student.violation_details = {
-        "tab_switch": 0,
-        "fullscreen_exit": 0,
-        "right_click": 0,
-        "screenshot": 0,
-        "copy": 0,
-        "paste": 0
-    }
 
     db.commit()
     db.refresh(student)
@@ -391,11 +371,9 @@ def record_violation(
     db: Session = Depends(get_db)
 ):
     """
-    Record an anti-cheat violation and auto-disqualify the student if the
-    per-drive threshold for that violation type is reached.
-
-    Threshold values are stored on the Drive.  A threshold of None means
-    the violation is tracked as a warning but never triggers disqualification.
+    Called by the frontend when it decides to disqualify a student.
+    The frontend handles all anti-cheat logic; this endpoint simply
+    persists the disqualification and auto-submits the exam.
     """
 
     # Check if exam started
@@ -405,77 +383,35 @@ def record_violation(
             detail="Exam not started yet"
         )
 
-    # Check if already submitted/disqualified
+    # Already handled
     if student.exam_submitted_at:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Exam already submitted"
         )
 
-    # Validate violation type
-    if request.violation_type not in VALID_VIOLATION_TYPES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid violation type. Must be one of: {', '.join(VALID_VIOLATION_TYPES)}"
-        )
+    # Persist disqualification
+    student.is_disqualified = True
+    student.disqualification_reason = request.disqualification_reason
+    student.exam_submitted_at = datetime.utcnow()
+    student.score = 0
 
-    # Get current violations
-    violations = student.violation_details or {
-        "tab_switch": 0,
-        "fullscreen_exit": 0,
-        "right_click": 0,
-        "screenshot": 0,
-        "copy": 0,
-        "paste": 0
-    }
-
-    # Increment violation count
-    violations[request.violation_type] = violations.get(request.violation_type, 0) + 1
-    student.violation_details = violations
-
-    # Calculate total violations
-    total_violations = sum(violations.values())
-    student.total_violations = total_violations
-
-    # --- Auto-disqualification check ---
-    # Use global thresholds (same for all drives)
-    effective_threshold = VIOLATION_THRESHOLDS.get(request.violation_type)
-
-    is_disqualified = False
-    disqualification_reason = None
-
-    if effective_threshold is not None and violations[request.violation_type] >= effective_threshold:
-        # Threshold reached — auto-disqualify
-        disqualification_reason = (
-            f"Exceeded {request.violation_type.replace('_', ' ')} limit "
-            f"({violations[request.violation_type]}/{effective_threshold})"
-        )
-        student.is_disqualified = True
-        student.disqualification_reason = disqualification_reason
-        student.exam_submitted_at = datetime.utcnow()
-        student.score = 0
-        # Calculate total marks from all drive questions
-        drive = db.query(Drive).filter(Drive.id == student.drive_id).first()
-        if drive:
-            all_questions = db.query(Question).filter(Question.drive_id == drive.id).all()
-            student.total_marks = sum(q.points for q in all_questions)
-        else:
-            student.total_marks = 0
-        is_disqualified = True
+    drive = db.query(Drive).filter(Drive.id == student.drive_id).first()
+    if drive:
+        all_questions = db.query(Question).filter(Question.drive_id == drive.id).all()
+        student.total_marks = sum(q.points for q in all_questions)
+    else:
+        student.total_marks = 0
 
     db.commit()
     db.refresh(student)
 
-    # If disqualified, bust the session cache so re-validation hits DB
-    if is_disqualified:
-        cache_invalidate_session(student.access_token)
+    cache_invalidate_session(student.access_token)
 
     return ViolationResponse(
         success=True,
-        is_disqualified=is_disqualified,
-        disqualification_reason=disqualification_reason,
-        current_violations=violations,
-        total_violations=total_violations
+        is_disqualified=True,
+        disqualification_reason=student.disqualification_reason,
     )
 
 
@@ -630,16 +566,11 @@ def get_exam_result(
     score = student.score if student.score is not None else 0
     percentage = (score / correct_total_marks * 100) if correct_total_marks > 0 else 0
 
-    # Calculate total violations
-    total_violations = student.total_violations or 0
-
     return {
         "score": score,
-        "total_marks": correct_total_marks,  # Return correct total_marks
+        "total_marks": correct_total_marks,
         "percentage": round(percentage, 2),
         "submitted_at": student.exam_submitted_at,
         "is_disqualified": student.is_disqualified,
         "disqualification_reason": student.disqualification_reason,
-        "total_violations": total_violations,
-        "violation_details": student.violation_details
     }
