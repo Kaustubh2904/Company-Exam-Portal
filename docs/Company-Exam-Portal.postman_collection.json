@@ -1,0 +1,1055 @@
+{
+  "info": {
+    "name": "Company Exam Portal API",
+    "description": "Complete API collection for the Company Exam Portal backend.\n\n## Setup\n1. Set the `baseUrl` variable to your server (default: `http://localhost:8000`).\n2. Run **Admin Login** → the `adminToken` variable is auto-saved.\n3. Run **Company Login** → the `companyToken` variable is auto-saved.\n4. Student requests use the `studentToken` variable — set it after calling **Student Login**.\n\n## Auth Header convention\n- Admin endpoints → `Authorization: Bearer {{adminToken}}`\n- Company endpoints → `Authorization: Bearer {{companyToken}}`\n- Student endpoints → `X-Student-Token: {{studentToken}}`",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl",      "value": "http://localhost:8000", "type": "string" },
+    { "key": "adminToken",   "value": "",                      "type": "string" },
+    { "key": "companyToken", "value": "",                      "type": "string" },
+    { "key": "studentToken", "value": "",                      "type": "string" },
+    { "key": "companyId",    "value": "1",                     "type": "string" },
+    { "key": "driveId",      "value": "1",                     "type": "string" },
+    { "key": "questionId",   "value": "1",                     "type": "string" },
+    { "key": "collegeId",    "value": "1",                     "type": "string" },
+    { "key": "groupId",      "value": "1",                     "type": "string" },
+    { "key": "ticketId",     "value": "1",                     "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "🔐 Authentication",
+      "item": [
+        {
+          "name": "Admin Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const json = pm.response.json();",
+                  "    pm.collectionVariables.set('adminToken', json.access_token);",
+                  "    console.log('Admin token saved:', json.access_token.slice(0,30) + '...');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin123\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/auth/admin/login", "host": ["{{baseUrl}}"], "path": ["api","auth","admin","login"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Company Register",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "company_name", "value": "Acme Corp",        "type": "text" },
+                { "key": "username",     "value": "acmecorp",         "type": "text" },
+                { "key": "email",        "value": "hr@acme.com",      "type": "text" },
+                { "key": "password",     "value": "acme@secure123",   "type": "text" },
+                { "key": "logo",         "type": "file",  "src": "/path/to/logo.png", "description": "PNG or JPEG ≤ 2 MB" }
+              ]
+            },
+            "url": { "raw": "{{baseUrl}}/api/auth/company/register", "host": ["{{baseUrl}}"], "path": ["api","auth","company","register"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Company Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const json = pm.response.json();",
+                  "    pm.collectionVariables.set('companyToken', json.access_token);",
+                  "    console.log('Company token saved:', json.access_token.slice(0,30) + '...');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"acmecorp\",\n  \"password\": \"acme@secure123\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/auth/company/login", "host": ["{{baseUrl}}"], "path": ["api","auth","company","login"] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "👑 Admin — Companies",
+      "item": [
+        {
+          "name": "Get All Companies",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/companies?skip=0&limit=100&status_filter=all",
+              "host": ["{{baseUrl}}"], "path": ["api","admin","companies"],
+              "query": [
+                { "key": "skip",          "value": "0"   },
+                { "key": "limit",         "value": "100" },
+                { "key": "status_filter", "value": "all", "description": "all | approved | suspended" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Suspend Company",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Violation of terms of service\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/admin/companies/{{companyId}}/suspend", "host": ["{{baseUrl}}"], "path": ["api","admin","companies","{{companyId}}","suspend"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Unsuspend Company",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/companies/{{companyId}}/unsuspend", "host": ["{{baseUrl}}"], "path": ["api","admin","companies","{{companyId}}","unsuspend"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Set Company Plan",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"plan\": \"pro\",\n  \"drives_limit\": null\n}",
+              "options": {
+                "raw": { "language": "json" }
+              }
+            },
+            "description": "Plans: free | basic | pro | premium | custom. For 'custom', provide drives_limit.",
+            "url": { "raw": "{{baseUrl}}/api/admin/companies/{{companyId}}/set-plan", "host": ["{{baseUrl}}"], "path": ["api","admin","companies","{{companyId}}","set-plan"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Notify Company",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Action Required\",\n  \"message\": \"Please update your company profile.\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/admin/companies/{{companyId}}/notify", "host": ["{{baseUrl}}"], "path": ["api","admin","companies","{{companyId}}","notify"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Company",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/companies/{{companyId}}", "host": ["{{baseUrl}}"], "path": ["api","admin","companies","{{companyId}}"] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "👑 Admin — Drives",
+      "item": [
+        {
+          "name": "Get All Drives (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/drives?skip=0&limit=100&status_filter=all",
+              "host": ["{{baseUrl}}"], "path": ["api","admin","drives"],
+              "query": [
+                { "key": "skip",          "value": "0"   },
+                { "key": "limit",         "value": "100" },
+                { "key": "status_filter", "value": "all", "description": "all | draft | upcoming | live | ended | suspended" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Drive Detail (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/drives/{{driveId}}/detail", "host": ["{{baseUrl}}"], "path": ["api","admin","drives","{{driveId}}","detail"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Drive Exam Status (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/drives/{{driveId}}/exam-status", "host": ["{{baseUrl}}"], "path": ["api","admin","drives","{{driveId}}","exam-status"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Suspend Drive",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/drives/{{driveId}}/suspend", "host": ["{{baseUrl}}"], "path": ["api","admin","drives","{{driveId}}","suspend"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Reactivate Drive",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/drives/{{driveId}}/reactivate", "host": ["{{baseUrl}}"], "path": ["api","admin","drives","{{driveId}}","reactivate"] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "👑 Admin — Colleges",
+      "item": [
+        {
+          "name": "Get All Colleges",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/colleges", "host": ["{{baseUrl}}"], "path": ["api","admin","colleges"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Pending Custom Colleges",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/colleges/pending", "host": ["{{baseUrl}}"], "path": ["api","admin","colleges","pending"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Create College",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Indian Institute of Technology Bombay\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/admin/colleges", "host": ["{{baseUrl}}"], "path": ["api","admin","colleges"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Approve College",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/colleges/{{collegeId}}/approve", "host": ["{{baseUrl}}"], "path": ["api","admin","colleges","{{collegeId}}","approve"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Approve Custom College",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"MIT World Peace University\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/admin/colleges/approve-custom", "host": ["{{baseUrl}}"], "path": ["api","admin","colleges","approve-custom"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Update College",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated College Name\",\n  \"is_approved\": true\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/admin/colleges/{{collegeId}}", "host": ["{{baseUrl}}"], "path": ["api","admin","colleges","{{collegeId}}"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete College",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/colleges/{{collegeId}}", "host": ["{{baseUrl}}"], "path": ["api","admin","colleges","{{collegeId}}"] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "👑 Admin — Student Groups",
+      "item": [
+        {
+          "name": "Get All Student Groups",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/student-groups", "host": ["{{baseUrl}}"], "path": ["api","admin","student-groups"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Pending Custom Student Groups",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/student-groups/pending", "host": ["{{baseUrl}}"], "path": ["api","admin","student-groups","pending"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Student Group",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"AI & ML\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/admin/student-groups", "host": ["{{baseUrl}}"], "path": ["api","admin","student-groups"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Approve Student Group",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/student-groups/{{groupId}}/approve", "host": ["{{baseUrl}}"], "path": ["api","admin","student-groups","{{groupId}}","approve"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Approve Custom Student Group",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Data Science\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/admin/student-groups/approve-custom", "host": ["{{baseUrl}}"], "path": ["api","admin","student-groups","approve-custom"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Student Group",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Group Name\",\n  \"is_approved\": true\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/admin/student-groups/{{groupId}}", "host": ["{{baseUrl}}"], "path": ["api","admin","student-groups","{{groupId}}"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Student Group",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/student-groups/{{groupId}}", "host": ["{{baseUrl}}"], "path": ["api","admin","student-groups","{{groupId}}"] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "👑 Admin — Notifications",
+      "item": [
+        {
+          "name": "Get All Notifications",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/notifications?skip=0&limit=100",
+              "host": ["{{baseUrl}}"], "path": ["api","admin","notifications"],
+              "query": [
+                { "key": "skip",       "value": "0"   },
+                { "key": "limit",      "value": "100" },
+                { "key": "company_id", "value": "",   "disabled": true, "description": "Filter by company ID (optional)" }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "👑 Admin — Tickets",
+      "item": [
+        {
+          "name": "Get All Tickets",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/tickets",
+              "host": ["{{baseUrl}}"], "path": ["api","admin","tickets"],
+              "query": [
+                { "key": "status_filter",   "value": "",        "disabled": true, "description": "open | in_progress | resolved | closed" },
+                { "key": "category_filter", "value": "",        "disabled": true, "description": "billing | drive | technical | general" },
+                { "key": "priority_filter", "value": "",        "disabled": true, "description": "low | medium | high | urgent" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Ticket Detail (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/admin/tickets/{{ticketId}}", "host": ["{{baseUrl}}"], "path": ["api","admin","tickets","{{ticketId}}"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Ticket Status",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"resolved\",\n  \"resolution_notes\": \"Issue has been resolved. The drive limit was extended.\"\n}"
+            },
+            "description": "status: open | in_progress | resolved | closed\nresolution_notes required when status is 'resolved' or 'closed'",
+            "url": { "raw": "{{baseUrl}}/api/admin/tickets/{{ticketId}}/status", "host": ["{{baseUrl}}"], "path": ["api","admin","tickets","{{ticketId}}","status"] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🏢 Company — Profile & Misc",
+      "item": [
+        {
+          "name": "Get Company Profile",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/company/profile", "host": ["{{baseUrl}}"], "path": ["api","company","profile"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Approved Colleges",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/company/colleges", "host": ["{{baseUrl}}"], "path": ["api","company","colleges"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Approved Student Groups",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/company/student-groups", "host": ["{{baseUrl}}"], "path": ["api","company","student-groups"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Company Notifications",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/company/notifications", "host": ["{{baseUrl}}"], "path": ["api","company","notifications"] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🏢 Company — Drives",
+      "item": [
+        {
+          "name": "Get All Drives",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/company/drives?skip=0&limit=100",
+              "host": ["{{baseUrl}}"], "path": ["api","company","drives"],
+              "query": [
+                { "key": "skip",  "value": "0"   },
+                { "key": "limit", "value": "100" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Drive",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    const json = pm.response.json();",
+                  "    if (json.id) pm.collectionVariables.set('driveId', json.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{companyToken}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Software Engineer Hiring Drive 2026\",\n  \"description\": \"Technical assessment for SDE roles\",\n  \"category\": \"Technical MCQ\",\n  \"window_start\": \"2026-04-01T09:00:00Z\",\n  \"window_end\": \"2026-04-01T12:00:00Z\",\n  \"exam_duration_minutes\": 60,\n  \"targets\": [\n    {\n      \"college_id\": 1,\n      \"custom_college_name\": null,\n      \"student_group_id\": 1,\n      \"custom_student_group_name\": null,\n      \"batch_year\": \"2026\"\n    }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/company/drives", "host": ["{{baseUrl}}"], "path": ["api","company","drives"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Drive",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/company/drives/{{driveId}}", "host": ["{{baseUrl}}"], "path": ["api","company","drives","{{driveId}}"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Drive",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{companyToken}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated Drive Title\",\n  \"description\": \"Updated description\",\n  \"category\": \"Aptitude MCQ\",\n  \"window_start\": \"2026-04-02T09:00:00Z\",\n  \"window_end\": \"2026-04-02T12:00:00Z\",\n  \"exam_duration_minutes\": 90\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/company/drives/{{driveId}}", "host": ["{{baseUrl}}"], "path": ["api","company","drives","{{driveId}}"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Drive",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/company/drives/{{driveId}}", "host": ["{{baseUrl}}"], "path": ["api","company","drives","{{driveId}}"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Publish Drive",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/company/drives/{{driveId}}/publish", "host": ["{{baseUrl}}"], "path": ["api","company","drives","{{driveId}}","publish"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Duplicate Drive",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/company/drives/{{driveId}}/duplicate", "host": ["{{baseUrl}}"], "path": ["api","company","drives","{{driveId}}","duplicate"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Start Exam Window",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/company/drives/{{driveId}}/start", "host": ["{{baseUrl}}"], "path": ["api","company","drives","{{driveId}}","start"] }
+          },
+          "response": []
+        },
+        {
+          "name": "End Exam Window",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/company/drives/{{driveId}}/end", "host": ["{{baseUrl}}"], "path": ["api","company","drives","{{driveId}}","end"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Exam Status",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/company/drives/{{driveId}}/exam-status", "host": ["{{baseUrl}}"], "path": ["api","company","drives","{{driveId}}","exam-status"] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🏢 Company — Questions",
+      "item": [
+        {
+          "name": "Get Drive Questions",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/company/drives/{{driveId}}/questions", "host": ["{{baseUrl}}"], "path": ["api","company","drives","{{driveId}}","questions"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Upload Questions via CSV",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "/path/to/questions.csv",
+                  "description": "CSV with columns: question, option_a, option_b, option_c, option_d, correct_answer, points"
+                }
+              ]
+            },
+            "url": { "raw": "{{baseUrl}}/api/company/drives/{{driveId}}/upload-questions", "host": ["{{baseUrl}}"], "path": ["api","company","drives","{{driveId}}","upload-questions"] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🏢 Company — Students",
+      "item": [
+        {
+          "name": "Get Drive Students",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/company/drives/{{driveId}}/students", "host": ["{{baseUrl}}"], "path": ["api","company","drives","{{driveId}}","students"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Upload Students via CSV",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "/path/to/students.csv",
+                  "description": "CSV with columns: name, email, roll_number, phone (optional), college (optional), student_group (optional)"
+                }
+              ]
+            },
+            "url": { "raw": "{{baseUrl}}/api/company/drives/{{driveId}}/upload-students", "host": ["{{baseUrl}}"], "path": ["api","company","drives","{{driveId}}","upload-students"] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🏢 Company — Results & Export",
+      "item": [
+        {
+          "name": "Get Drive Results",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/company/drives/{{driveId}}/results",
+              "host": ["{{baseUrl}}"], "path": ["api","company","drives","{{driveId}}","results"],
+              "query": [
+                { "key": "min_percentage", "value": "50", "disabled": true, "description": "Filter students above this percentage" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Export Results — Summary CSV",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/company/drives/{{driveId}}/results/export?format=summary",
+              "host": ["{{baseUrl}}"], "path": ["api","company","drives","{{driveId}}","results","export"],
+              "query": [{ "key": "format", "value": "summary" }]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Export Results — Detailed CSV",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/company/drives/{{driveId}}/results/export?format=detailed",
+              "host": ["{{baseUrl}}"], "path": ["api","company","drives","{{driveId}}","results","export"],
+              "query": [{ "key": "format", "value": "detailed" }]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🏢 Company — Email Templates",
+      "item": [
+        {
+          "name": "Get Email Template",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/company/email-template", "host": ["{{baseUrl}}"], "path": ["api","company","email-template"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Email Template",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{companyToken}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject_template\": \"Your Exam Access: {drive_title}\",\n  \"body_template\": \"Dear {student_name},\\n\\nYou are invited to take the exam for {drive_title}.\\n\\nAccess Token: {access_token}\\nLogin Email: {student_email}\\n\\nBest regards,\\n{company_name}\",\n  \"use_custom_template\": true\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/company/email-template", "host": ["{{baseUrl}}"], "path": ["api","company","email-template"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Preview Email Template",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{companyToken}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject_template\": \"Your Exam Access: {drive_title}\",\n  \"body_template\": \"Dear {student_name},\\n\\nAccess Token: {access_token}\\nLogin Email: {student_email}\\n\\n{company_name}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/company/email-template/preview", "host": ["{{baseUrl}}"], "path": ["api","company","email-template","preview"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Send Emails to Students",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/company/drives/{{driveId}}/email-students", "host": ["{{baseUrl}}"], "path": ["api","company","drives","{{driveId}}","email-students"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Email Status",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/company/drives/{{driveId}}/email-status", "host": ["{{baseUrl}}"], "path": ["api","company","drives","{{driveId}}","email-status"] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🏢 Company — Tickets",
+      "item": [
+        {
+          "name": "Raise Ticket",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const json = pm.response.json();",
+                  "    if (json.id) pm.collectionVariables.set('ticketId', json.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{companyToken}}" },
+              { "key": "Content-Type",  "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Unable to upload student CSV\",\n  \"description\": \"When I try to upload the CSV file for the drive, I get a 400 error saying the file is invalid. I have verified the columns are correct.\",\n  \"category\": \"technical\",\n  \"priority\": \"high\"\n}"
+            },
+            "description": "category: billing | drive | technical | general\npriority: low | medium | high | urgent",
+            "url": { "raw": "{{baseUrl}}/api/company/tickets/raise", "host": ["{{baseUrl}}"], "path": ["api","company","tickets","raise"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Get My Tickets",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/company/tickets/my-tickets", "host": ["{{baseUrl}}"], "path": ["api","company","tickets","my-tickets"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Get My Ticket by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{companyToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/company/tickets/my-tickets/{{ticketId}}", "host": ["{{baseUrl}}"], "path": ["api","company","tickets","my-tickets","{{ticketId}}"] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🎓 Student — Auth & Info",
+      "item": [
+        {
+          "name": "Student Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const json = pm.response.json();",
+                  "    pm.collectionVariables.set('studentToken', json.access_token);",
+                  "    console.log('Student token saved.');",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"student@example.com\",\n  \"access_token\": \"<student_access_token_from_email>\"\n}"
+            },
+            "description": "Students receive their email and access_token via email after the company sends credentials.",
+            "url": { "raw": "{{baseUrl}}/api/student/auth/login", "host": ["{{baseUrl}}"], "path": ["api","student","auth","login"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Validate Student Token",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Student-Token", "value": "{{studentToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/student/auth/validate", "host": ["{{baseUrl}}"], "path": ["api","student","auth","validate"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Drive Info",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Student-Token", "value": "{{studentToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/student/drive-info", "host": ["{{baseUrl}}"], "path": ["api","student","drive-info"] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🎓 Student — Exam Flow",
+      "item": [
+        {
+          "name": "Start Exam",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-Student-Token", "value": "{{studentToken}}" }],
+            "description": "Must be called before fetching questions. Generates randomized question order.",
+            "url": { "raw": "{{baseUrl}}/api/student/exam/start", "host": ["{{baseUrl}}"], "path": ["api","student","exam","start"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Exam Questions",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Student-Token", "value": "{{studentToken}}" }],
+            "description": "Returns questions in the student's randomized order. Correct answers are NOT included.",
+            "url": { "raw": "{{baseUrl}}/api/student/exam/questions", "host": ["{{baseUrl}}"], "path": ["api","student","exam","questions"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Exam",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Student-Token", "value": "{{studentToken}}" },
+              { "key": "Content-Type",    "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"answers\": [\n    {\n      \"question_id\": 1,\n      \"selected_option\": \"A\",\n      \"marked_for_review\": false\n    },\n    {\n      \"question_id\": 2,\n      \"selected_option\": \"C\",\n      \"marked_for_review\": false\n    },\n    {\n      \"question_id\": 3,\n      \"selected_option\": null,\n      \"marked_for_review\": true\n    }\n  ]\n}"
+            },
+            "description": "selected_option: A | B | C | D (or null for unanswered)",
+            "url": { "raw": "{{baseUrl}}/api/student/exam/submit", "host": ["{{baseUrl}}"], "path": ["api","student","exam","submit"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Record Violation (Disqualify)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Student-Token", "value": "{{studentToken}}" },
+              { "key": "Content-Type",    "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"disqualification_reason\": \"Tab switching detected 3 times\"\n}"
+            },
+            "description": "Called by the frontend anti-cheat system. Disqualifies the student and auto-submits their exam.",
+            "url": { "raw": "{{baseUrl}}/api/student/exam/violation", "host": ["{{baseUrl}}"], "path": ["api","student","exam","violation"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Exam Result",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "X-Student-Token", "value": "{{studentToken}}" }],
+            "description": "Available only after exam has been submitted.",
+            "url": { "raw": "{{baseUrl}}/api/student/exam/result", "host": ["{{baseUrl}}"], "path": ["api","student","exam","result"] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔍 Health & Docs",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Swagger UI",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/docs", "host": ["{{baseUrl}}"], "path": ["docs"] }
+          },
+          "response": []
+        },
+        {
+          "name": "OpenAPI JSON",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/openapi.json", "host": ["{{baseUrl}}"], "path": ["openapi.json"] }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

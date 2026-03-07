@@ -15,14 +15,21 @@ class Company(Base):
     hashed_password = Column(String, nullable=False)
     logo_url = Column(String, nullable=True)
 
-    # Status as string field instead of enum - much simpler
-    status = Column(String, default="pending")  # pending, approved, rejected, suspended
+    # Status — companies are auto-approved on registration
+    status = Column(String, default="approved")  # approved, suspended
     admin_notes = Column(Text, nullable=True)
     reviewed_at = Column(DateTime, nullable=True)
     reviewed_by = Column(String, nullable=True)
 
-    # Legacy field for backward compatibility
-    is_approved = Column(Boolean, default=False)
+    # Legacy field kept for backward compatibility
+    is_approved = Column(Boolean, default=True)
+
+    # Plan-based drive access
+    plan = Column(String, default="free")  # free, basic, pro, premium, custom
+    drives_limit = Column(Integer, default=2)  # max drives allowed under current plan
+    drives_used = Column(Integer, default=0)   # cumulative count of drives that went live
+    plan_expires_at = Column(DateTime, nullable=True)   # NULL = never expires (free tier)
+    plan_updated_at = Column(DateTime, nullable=True)   # when admin last changed the plan
 
     # Email template fields
     email_subject_template = Column(Text, default="Exam Invitation - {{drive_title}}")
@@ -58,6 +65,7 @@ This is an automated email. Please do not reply to this message.""")
     company_drives = relationship("Drive", back_populates="company", cascade="all, delete-orphan")
     students = relationship("Student", back_populates="company", cascade="all, delete-orphan")
     tickets = relationship("Ticket", back_populates="company", cascade="all, delete-orphan")
+    notifications = relationship("Notification", back_populates="company", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Company(id={self.id}, name='{self.company_name}', status='{self.status}')>"

@@ -4,31 +4,31 @@ from app.models import Drive, College, StudentGroup, Company
 
 
 def get_drive_status(drive: Drive) -> str:
-    """Calculate drive status on-the-fly based on current time and window times"""
+    """
+    Calculate the canonical drive status based on the stored status field and actual window times.
+
+    Lifecycle:
+        draft     → (publish) → upcoming → (start) → live → (end / time expired) → ended
+
+    The `status` column stores the last deliberate state set by a company or backend action.
+    `actual_window_start/end` determine whether a live drive has auto-ended.
+    """
+    # Suspended is an admin override — always return it as-is
     if drive.status == "suspended":
         return "suspended"
-    if drive.status in ["draft", "submitted", "rejected"]:
-        return drive.status
-    if not drive.is_approved:
-        return drive.status
 
-    now = datetime.utcnow()
+    # If the drive has been manually ended or its window has expired, it is ended
+    if drive.actual_window_end:
+        now = datetime.utcnow()
+        if now >= drive.actual_window_end:
+            return "ended"
 
-    # Check if drive has been manually ended or calculated end has passed
-    if drive.actual_window_end and now >= drive.actual_window_end:
-        return "completed"
-
-    # actual_window_end is always set when actual_window_start is set
-    # so if we reach here with actual_window_start set, the window is still open
+    # If the exam window has been opened, it is currently live
     if drive.actual_window_start:
         return "live"
 
-    # Drive has not been manually started — use scheduled window only for "upcoming" indicator
-    if drive.window_start and now < drive.window_start:
-        return "upcoming"
-
-    # Window start has passed but company hasn't manually started — still upcoming
-    return "upcoming"
+    # Return the stored status for draft / upcoming
+    return drive.status  # "draft" or "upcoming"
 
 
 def format_drive_response(drive: Drive, db: Session) -> dict:
@@ -76,7 +76,7 @@ def format_drive_response(drive: Drive, db: Session) -> dict:
         "actual_window_end": drive.actual_window_end,
         "exam_duration_minutes": drive.exam_duration_minutes,
         "duration_minutes": drive.duration_minutes,
-        "status": drive.status,
+        "status": get_drive_status(drive),
         "is_approved": drive.is_approved,
         "admin_notes": drive.admin_notes,
         "created_at": drive.created_at,

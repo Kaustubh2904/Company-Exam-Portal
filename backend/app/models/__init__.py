@@ -9,6 +9,7 @@ from app.models.drive_target import DriveTarget
 from app.models.student import Student
 from app.models.student_response import StudentResponse
 from app.models.ticket import Ticket
+from app.models.notification import Notification
 
 # Export all models
 __all__ = [
@@ -21,5 +22,6 @@ __all__ = [
     "DriveTarget",
     "Student",
     "StudentResponse",
-    "Ticket"
+    "Ticket",
+    "Notification",
 ]

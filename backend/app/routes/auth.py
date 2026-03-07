@@ -107,12 +107,18 @@ def company_register(
         email=email,
         hashed_password=hashed_password,
         logo_url=f"/static/logos/{filename}",
+        # Auto-approve on registration with free plan
+        status="approved",
+        is_approved=True,
+        plan="free",
+        drives_limit=2,
+        drives_used=0,
     )
     db.add(company)
     db.commit()
     db.refresh(company)
 
-    return {"message": "Company registered successfully. Waiting for admin approval."}
+    return {"message": "Company registered successfully."}
 
 @router.post("/company/login", response_model=Token)
 def company_login(company_data: CompanyLogin, req: Request, db: Session = Depends(get_db)):
@@ -133,26 +139,13 @@ def company_login(company_data: CompanyLogin, req: Request, db: Session = Depend
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"
         )
-    
-    if not company.is_approved:
-        # Provide more specific error messages based on company status
-        company_status = getattr(company, 'status', 'pending')
-        if company_status == 'rejected':
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Company account has been rejected by admin. Please contact support."
-            )
-        elif company_status == 'suspended':
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Company account has been suspended. Please contact admin."
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Company account is pending admin approval"
-            )
-    
+
+    if getattr(company, 'status', 'approved') == 'suspended':
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Company account has been suspended. Please contact admin."
+        )
+
     access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
     access_token = create_access_token(
         data={"sub": str(company.id), "user_type": "company"},

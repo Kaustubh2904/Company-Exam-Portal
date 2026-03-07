@@ -12,6 +12,7 @@ from app.database.connection import get_db
 from app.database.config import settings
 from app.models import Drive, Question, Student, College, StudentGroup, DriveTarget, Company
 from app.models.student_response import StudentResponse as StudentResponseModel
+from app.models.notification import Notification
 from app.schemas.drive import DriveCreate, DriveUpdate, DriveResponse, DriveStatusUpdate
 from app.schemas.question import QuestionResponse
 from app.schemas.student import StudentResponse
@@ -19,7 +20,7 @@ from app.schemas.email import (
     EmailTemplateUpdate, EmailTemplateResponse, EmailTemplatePreview,
     EmailTemplatePreviewResponse, EmailSendResponse, EmailStatusResponse
 )
-from app.schemas.company import CollegeResponse, StudentGroupResponse
+from app.schemas.company import CollegeResponse, StudentGroupResponse, NotificationResponse, PLAN_LIMITS
 from app.auth import get_company_user, get_company_or_admin_user
 from app.utils.email_processor import EmailTemplateProcessor, TEMPLATE_VARIABLES
 from app.utils.drive_utils import get_drive_status, format_drive_response
@@ -72,9 +73,7 @@ def get_company_drives(
         drive_dict = format_drive_response(drive, db)
         drive_dict["question_count"] = db.query(Question).filter(Question.drive_id == drive.id).count()
         drive_dict["student_count"] = db.query(Student).filter(Student.drive_id == drive.id).count()
-        # Override status with calculated status if approved
-        if drive.is_approved:
-            drive_dict["status"] = get_drive_status(drive)
+        drive_dict["status"] = get_drive_status(drive)
         result.append(drive_dict)
 
     return result
@@ -191,9 +190,10 @@ def update_drive(
     if not drive:
         raise HTTPException(status_code=404, detail="Drive not found")
 
-    # Only allow updates if drive is not approved yet
-    if drive.is_approved:
-        raise HTTPException(status_code=400, detail="Cannot update approved drive")
+    # Only allow updates for draft or upcoming drives
+    current_status = get_drive_status(drive)
+    if current_status in ("live", "ended"):
+        raise HTTPException(status_code=400, detail=f"Cannot update a {current_status} drive")
 
     # Update basic fields
     if drive_data.title is not None:
@@ -275,22 +275,23 @@ def delete_drive(
     if not drive:
         raise HTTPException(status_code=404, detail="Drive not found")
 
-    # Only allow deletion if drive is not approved yet
-    if drive.is_approved:
-        raise HTTPException(status_code=400, detail="Cannot delete approved drive")
+    # Only allow deletion of draft or upcoming drives
+    current_status = get_drive_status(drive)
+    if current_status in ("live", "ended"):
+        raise HTTPException(status_code=400, detail=f"Cannot delete a {current_status} drive")
 
     db.delete(drive)
     db.commit()
 
     return {"message": "Drive deleted successfully"}
 
-@router.put("/drives/{drive_id}/submit", response_model=DriveResponse)
-def submit_drive_for_approval(
+@router.put("/drives/{drive_id}/publish", response_model=DriveResponse)
+def publish_drive(
     drive_id: int,
     db: Session = Depends(get_db),
     company: dict = Depends(get_company_user)
 ):
-    """Submit drive for admin approval"""
+    """Publish a draft drive — moves it to 'upcoming' so it can be started later"""
     drive = db.query(Drive).filter(
         Drive.id == drive_id,
         Drive.company_id == company.id
@@ -300,52 +301,24 @@ def submit_drive_for_approval(
         raise HTTPException(status_code=404, detail="Drive not found")
 
     if drive.status != "draft":
-        raise HTTPException(status_code=400, detail="Only draft drives can be submitted")
+        raise HTTPException(status_code=400, detail="Only draft drives can be published")
 
-    # Check if drive has questions and students
+    # Check the drive has questions and students before allowing publish
     question_count = db.query(Question).filter(Question.drive_id == drive_id).count()
     if question_count == 0:
-        raise HTTPException(status_code=400, detail="Drive must have at least one question to submit")
+        raise HTTPException(status_code=400, detail="Drive must have at least one question before publishing")
 
     student_count = db.query(Student).filter(Student.drive_id == drive_id).count()
     if student_count == 0:
-        raise HTTPException(status_code=400, detail="Drive must have at least one student to submit")
+        raise HTTPException(status_code=400, detail="Drive must have at least one student before publishing")
 
-    drive.status = "submitted"
+    drive.status = "upcoming"
     db.commit()
     db.refresh(drive)
 
     drive_dict = format_drive_response(drive, db)
-    drive_dict["question_count"] = db.query(Question).filter(Question.drive_id == drive.id).count()
-    drive_dict["student_count"] = db.query(Student).filter(Student.drive_id == drive.id).count()
-    return drive_dict
-
-@router.put("/drives/{drive_id}/status", response_model=DriveResponse)
-def update_drive_status(
-    drive_id: int,
-    status_data: DriveStatusUpdate,
-    db: Session = Depends(get_db),
-    company: dict = Depends(get_company_user)
-):
-    """Update drive status (start/stop)"""
-    drive = db.query(Drive).filter(
-        Drive.id == drive_id,
-        Drive.company_id == company.id
-    ).first()
-
-    if not drive:
-        raise HTTPException(status_code=404, detail="Drive not found")
-
-    if not drive.is_approved:
-        raise HTTPException(status_code=400, detail="Drive not approved by admin")
-
-    drive.status = status_data.status
-    db.commit()
-    db.refresh(drive)
-
-    drive_dict = format_drive_response(drive, db)
-    drive_dict["question_count"] = db.query(Question).filter(Question.drive_id == drive.id).count()
-    drive_dict["student_count"] = db.query(Student).filter(Student.drive_id == drive.id).count()
+    drive_dict["question_count"] = question_count
+    drive_dict["student_count"] = student_count
     return drive_dict
 
 @router.post("/drives/{drive_id}/duplicate", response_model=DriveResponse)
@@ -612,8 +585,9 @@ def email_students(
     if not drive:
         raise HTTPException(status_code=404, detail="Drive not found")
 
-    if not drive.is_approved:
-        raise HTTPException(status_code=400, detail="Drive must be approved before emailing students")
+    drive_status = get_drive_status(drive)
+    if drive_status not in ("upcoming", "live"):
+        raise HTTPException(status_code=400, detail="Drive must be published (upcoming or live) before emailing students")
 
     # Get students
     students = db.query(Student).filter(Student.drive_id == drive_id).all()
@@ -737,11 +711,12 @@ def get_email_status(
     else:
         template_preview = {"subject": "Template not found", "body": ""}
 
-    can_send = drive.is_approved and student_count > 0 and email_configured
+    drive_status_val = get_drive_status(drive)
+    can_send = drive_status_val in ("upcoming", "live") and student_count > 0 and email_configured
 
     status_message = (
         "Ready to send emails" if can_send
-        else "Drive not approved" if not drive.is_approved
+        else "Drive not published yet" if drive_status_val == "draft"
         else "No students found" if student_count == 0
         else "Email not configured" if not email_configured
         else "Unknown error"
@@ -777,8 +752,9 @@ async def upload_questions_csv(
     if not drive:
         raise HTTPException(status_code=404, detail="Drive not found")
 
-    if drive.is_approved:
-        raise HTTPException(status_code=400, detail="Cannot upload questions to approved drive")
+    # Only allow question uploads for draft drives
+    if get_drive_status(drive) not in ("draft", "upcoming"):
+        raise HTTPException(status_code=400, detail="Cannot upload questions to a live or ended drive")
 
     if not file.filename.endswith('.csv'):
         raise HTTPException(status_code=400, detail="File must be a CSV")
@@ -954,11 +930,46 @@ def start_exam(
     if not drive:
         raise HTTPException(status_code=404, detail="Drive not found")
 
-    if not drive.is_approved:
-        raise HTTPException(status_code=400, detail="Cannot start exam for unapproved drive")
+    # Drive must be in 'upcoming' status (published) to start
+    current_status = get_drive_status(drive)
+    if current_status != "upcoming":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only 'upcoming' drives can be started (current status: {current_status})"
+        )
 
     if drive.actual_window_start:
         raise HTTPException(status_code=400, detail="Exam window has already been started")
+
+    # ── Plan check ─────────────────────────────────────────────
+    company_obj = db.query(Company).filter(Company.id == company.id).first()
+    if not company_obj:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    # Lazy expiry check — if plan expired, treat as free (limit = 2)
+    now = datetime.utcnow()
+    effective_limit = company_obj.drives_limit
+    if company_obj.plan_expires_at and now > company_obj.plan_expires_at:
+        # Plan has expired — fall back to free-tier limit
+        effective_limit = PLAN_LIMITS.get("free", 2)
+
+    if company_obj.drives_used >= effective_limit:
+        if company_obj.plan_expires_at and now > company_obj.plan_expires_at:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"Your plan has expired and you have used all {effective_limit} free-tier drives. "
+                    "Please contact admin to renew your plan."
+                )
+            )
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Drive limit reached ({company_obj.drives_used}/{effective_limit} drives used). "
+                "Please contact admin to upgrade your plan."
+            )
+        )
+    # ── End plan check ─────────────────────────────────────────
 
     # Calculate the window duration from scheduled times
     if not drive.window_start or not drive.window_end:
@@ -978,6 +989,12 @@ def start_exam(
         window_duration_minutes = int((drive.window_end - drive.window_start).total_seconds() / 60)
 
     drive.actual_window_end = drive.actual_window_start + timedelta(minutes=window_duration_minutes)
+
+    # Increment the company's drives_used counter
+    company_obj.drives_used = (company_obj.drives_used or 0) + 1
+
+    # Mark drive as live
+    drive.status = "live"
 
     db.commit()
     db.refresh(drive)
@@ -1018,7 +1035,7 @@ def end_exam(
     # Set the actual window end time immediately (override any calculated end time)
     now = datetime.utcnow()
     drive.actual_window_end = now
-    drive.status = "completed"
+    drive.status = "ended"
 
     # Auto-submit all students who are currently taking the exam
     students_in_progress = db.query(Student).filter(
@@ -1095,7 +1112,7 @@ def get_exam_status(
         "exam_duration_minutes": drive.exam_duration_minutes,
         "time_remaining": time_remaining_seconds,
         "time_remaining_minutes": time_remaining_minutes,
-        "can_start": drive.is_approved and not drive.actual_window_start and has_students,
+        "can_start": get_drive_status(drive) == "upcoming" and not drive.actual_window_start and has_students,
         "can_end": drive.actual_window_start and drive.actual_window_end and now < drive.actual_window_end,
         "status": get_drive_status(drive),
         "is_approved": drive.is_approved,
@@ -1330,3 +1347,58 @@ def export_drive_results(
             status_code=400,
             detail="Invalid format. Use 'summary' or 'detailed'"
         )
+
+
+# ============= PROFILE ROUTE =============
+
+@router.get("/profile")
+def get_company_profile(
+    db: Session = Depends(get_db),
+    company: dict = Depends(get_company_user)
+):
+    """Get the authenticated company's profile including plan info"""
+    company_obj = db.query(Company).filter(Company.id == company.id).first()
+    if not company_obj:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    now = datetime.utcnow()
+    plan_active = not (company_obj.plan_expires_at and now > company_obj.plan_expires_at)
+    effective_limit = company_obj.drives_limit if plan_active else PLAN_LIMITS.get("free", 2)
+    drives_remaining = max(0, effective_limit - (company_obj.drives_used or 0))
+
+    return {
+        "id": company_obj.id,
+        "company_name": company_obj.company_name,
+        "username": company_obj.username,
+        "email": company_obj.email,
+        "logo_url": company_obj.logo_url,
+        "plan": company_obj.plan,
+        "drives_limit": effective_limit,
+        "drives_used": company_obj.drives_used or 0,
+        "drives_remaining": drives_remaining,
+        "plan_expires_at": company_obj.plan_expires_at,
+        "plan_updated_at": company_obj.plan_updated_at,
+        "plan_active": plan_active,
+        "created_at": company_obj.created_at,
+    }
+
+
+# ============= NOTIFICATION ROUTES =============
+
+@router.get("/notifications", response_model=List[NotificationResponse])
+def get_notifications(
+    db: Session = Depends(get_db),
+    company: dict = Depends(get_company_user)
+):
+    """Get all notifications for the authenticated company (last 90 days)"""
+    cutoff = datetime.utcnow() - timedelta(days=90)
+    notifications = (
+        db.query(Notification)
+        .filter(
+            Notification.company_id == company.id,
+            Notification.created_at >= cutoff
+        )
+        .order_by(Notification.created_at.desc())
+        .all()
+    )
+    return notifications

@@ -1,13 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
-from datetime import datetime
+from typing import List, Optional
+from datetime import datetime, timedelta
 from pathlib import Path
 from app.database.connection import get_db
 from app.models import Company, Drive, College, StudentGroup, Question
 from app.models.student import Student
 from app.models.student_response import StudentResponse as StudentResponseModel
-from app.schemas.company import CompanyResponse, CompanyApprovalUpdate, CollegeResponse, StudentGroupResponse
+from app.models.notification import Notification
+from app.schemas.company import (
+    CompanyResponse, CompanyApprovalUpdate, CollegeResponse, StudentGroupResponse,
+    CompanyPlanUpdate, NotificationResponse, AdminNotifyRequest, PLAN_LIMITS
+)
 from app.schemas.drive import DriveResponse, AdminDriveApprovalUpdate
 from app.auth import get_admin_user
 from app.utils.drive_utils import get_drive_status, format_drive_response
@@ -30,82 +34,21 @@ router = APIRouter()
 def get_all_companies(
     skip: int = 0,
     limit: int = 100,
-    status_filter: str = "pending",  # pending, approved, suspended, rejected, all
+    status_filter: str = "all",  # approved, suspended, all
     db: Session = Depends(get_db),
     admin: dict = Depends(get_admin_user)
 ):
     """Get all companies (admin only)"""
     query = db.query(Company)
     
-    if status_filter == "pending":
-        query = query.filter(Company.status == "pending")
-    elif status_filter == "approved":
-        query = query.filter(Company.status == "approved") 
+    if status_filter == "approved":
+        query = query.filter(Company.status == "approved")
     elif status_filter == "suspended":
         query = query.filter(Company.status == "suspended")
-    elif status_filter == "rejected":
-        query = query.filter(Company.status == "rejected")
     # "all" shows everything
     
     companies = query.offset(skip).limit(limit).all()
     return companies
-
-@router.put("/companies/{company_id}/approve", response_model=CompanyResponse)
-def approve_company(
-    company_id: int,
-    approval_data: CompanyApprovalUpdate,
-    db: Session = Depends(get_db),
-    admin: dict = Depends(get_admin_user)
-):
-    """Approve company registration"""
-    company = db.query(Company).filter(Company.id == company_id).first()
-    if not company:
-        raise HTTPException(status_code=404, detail="Company not found")
-    
-    if approval_data.is_approved:
-        company.status = "approved"
-        company.is_approved = True  # Keep for backward compatibility
-    else:
-        company.status = "suspended"
-        company.is_approved = False
-    
-    # Update review metadata
-    company.reviewed_at = datetime.utcnow()
-    company.reviewed_by = admin.username
-    company.admin_notes = getattr(approval_data, 'notes', None)
-    
-    db.commit()
-    db.refresh(company)
-    
-    return company
-
-@router.put("/companies/{company_id}/reject")
-def reject_company(
-    company_id: int,
-    rejection_data: dict,  # {"reason": "optional reason"}
-    db: Session = Depends(get_db),
-    admin: dict = Depends(get_admin_user)
-):
-    """Reject company registration — deletes the uploaded logo from disk"""
-    company = db.query(Company).filter(Company.id == company_id).first()
-    if not company:
-        raise HTTPException(status_code=404, detail="Company not found")
-
-    # Delete logo file from disk since company is rejected
-    _delete_company_logo(company.logo_url)
-    company.logo_url = None
-
-    # Mark as rejected
-    company.status = "rejected"
-    company.is_approved = False  # Keep for backward compatibility
-    company.admin_notes = rejection_data.get("reason", "Rejected by admin")
-    company.reviewed_at = datetime.utcnow()
-    company.reviewed_by = admin.username
-
-    db.commit()
-    db.refresh(company)
-
-    return {"message": "Company rejected successfully", "company_id": company_id}
 
 @router.delete("/companies/{company_id}")
 def delete_company(
@@ -113,13 +56,13 @@ def delete_company(
     db: Session = Depends(get_db),
     admin: dict = Depends(get_admin_user)
 ):
-    """Delete/reject company registration"""
+    """Delete company account"""
     company = db.query(Company).filter(Company.id == company_id).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     
     # Check if company has any drives
-    if company.drives:
+    if company.company_drives:
         raise HTTPException(
             status_code=400, 
             detail="Cannot delete company with existing drives. Please handle drives first."
@@ -130,65 +73,169 @@ def delete_company(
     
     return {"message": "Company deleted successfully"}
 
+
+@router.put("/companies/{company_id}/suspend")
+def suspend_company(
+    company_id: int,
+    data: Optional[dict] = None,
+    db: Session = Depends(get_db),
+    admin: dict = Depends(get_admin_user)
+):
+    """Suspend a company account"""
+    company = db.query(Company).filter(Company.id == company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    if company.status == "suspended":
+        raise HTTPException(status_code=400, detail="Company is already suspended")
+
+    company.status = "suspended"
+    company.is_approved = False
+    company.admin_notes = (data or {}).get("reason", "Suspended by admin")
+    company.reviewed_at = datetime.utcnow()
+    company.reviewed_by = admin.username
+
+    db.commit()
+    db.refresh(company)
+    return {"message": "Company suspended", "company_id": company_id}
+
+
+@router.put("/companies/{company_id}/unsuspend")
+def unsuspend_company(
+    company_id: int,
+    db: Session = Depends(get_db),
+    admin: dict = Depends(get_admin_user)
+):
+    """Re-activate a suspended company"""
+    company = db.query(Company).filter(Company.id == company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    if company.status != "suspended":
+        raise HTTPException(status_code=400, detail="Company is not suspended")
+
+    company.status = "approved"
+    company.is_approved = True
+    company.reviewed_at = datetime.utcnow()
+    company.reviewed_by = admin.username
+
+    db.commit()
+    db.refresh(company)
+    return {"message": "Company reactivated", "company_id": company_id}
+
+
+@router.put("/companies/{company_id}/set-plan", response_model=CompanyResponse)
+def set_company_plan(
+    company_id: int,
+    plan_data: CompanyPlanUpdate,
+    db: Session = Depends(get_db),
+    admin: dict = Depends(get_admin_user)
+):
+    """Assign a plan to a company. For 'custom' plan, drives_limit must be provided."""
+    company = db.query(Company).filter(Company.id == company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    valid_plans = {"free", "basic", "pro", "premium", "custom"}
+    if plan_data.plan not in valid_plans:
+        raise HTTPException(status_code=400, detail=f"Invalid plan. Must be one of: {', '.join(sorted(valid_plans))}")
+
+    if plan_data.plan == "custom":
+        if plan_data.drives_limit is None or plan_data.drives_limit < 1:
+            raise HTTPException(status_code=400, detail="drives_limit must be a positive integer for custom plan")
+        new_limit = plan_data.drives_limit
+    else:
+        new_limit = PLAN_LIMITS[plan_data.plan]
+
+    company.plan = plan_data.plan
+    company.drives_limit = new_limit
+    company.plan_updated_at = datetime.utcnow()
+
+    # Set expiry 30 days from now for non-free plans
+    if plan_data.plan == "free":
+        company.plan_expires_at = None
+    else:
+        company.plan_expires_at = datetime.utcnow() + timedelta(days=30)
+
+    # Send a notification to the company
+    notification = Notification(
+        company_id=company_id,
+        type="plan_change",
+        title=f"Your plan has been updated to {plan_data.plan.capitalize()}",
+        message=(
+            f"Your account plan has been updated to {plan_data.plan.capitalize()} "
+            f"by the admin. You now have {new_limit} drive(s) allowed."
+            + (
+                f" Plan expires on {company.plan_expires_at.strftime('%Y-%m-%d')}."
+                if company.plan_expires_at else " This plan does not expire."
+            )
+        ),
+    )
+    db.add(notification)
+
+    db.commit()
+    db.refresh(company)
+    return company
+
+
+@router.post("/companies/{company_id}/notify")
+def notify_company(
+    company_id: int,
+    notify_data: AdminNotifyRequest,
+    db: Session = Depends(get_db),
+    admin: dict = Depends(get_admin_user)
+):
+    """Send a custom notification message to a specific company"""
+    company = db.query(Company).filter(Company.id == company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    notification = Notification(
+        company_id=company_id,
+        type="admin_message",
+        title=notify_data.title,
+        message=notify_data.message,
+    )
+    db.add(notification)
+    db.commit()
+    db.refresh(notification)
+
+    return {"message": "Notification sent", "notification_id": notification.id}
+
+
+@router.get("/notifications", response_model=List[NotificationResponse])
+def get_all_notifications(
+    company_id: Optional[int] = None,
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    admin: dict = Depends(get_admin_user)
+):
+    """Get all sent notifications (admin log). Optionally filter by company."""
+    query = db.query(Notification)
+    if company_id:
+        query = query.filter(Notification.company_id == company_id)
+    notifications = query.order_by(Notification.created_at.desc()).offset(skip).limit(limit).all()
+    return notifications
+
 @router.get("/drives", response_model=List[DriveResponse])
 def get_all_drives(
     skip: int = 0,
     limit: int = 100,
-    status_filter: str = "pending",  # pending, all, approved, rejected, suspended
+    status_filter: str = "all",  # all, draft, upcoming, live, ended, suspended
     db: Session = Depends(get_db),
     admin: dict = Depends(get_admin_user)
 ):
-    """Get drives for admin review"""
-    query = db.query(Drive)
-    
-    if status_filter == "pending":
-        # Show only drives that need approval
-        query = query.filter(Drive.is_approved == False, Drive.status == "submitted")
-    elif status_filter == "approved":
-        query = query.filter(Drive.is_approved == True)
-    elif status_filter == "rejected":
-        query = query.filter(Drive.status == "rejected")
-    elif status_filter == "suspended":
-        query = query.filter(Drive.status == "suspended")
-    # "all" shows everything
-    
-    drives = query.offset(skip).limit(limit).all()
-    
-    # Format drives and override status with calculated status if approved
+    """Get drives (admin view)"""
+    drives = db.query(Drive).offset(skip).limit(limit).all()
+
     result = []
     for drive in drives:
+        computed = get_drive_status(drive)
+        if status_filter != "all" and computed != status_filter:
+            continue
         drive_dict = format_drive_response(drive, db)
-        # Override status with calculated status if approved
-        if drive.is_approved:
-            drive_dict["status"] = get_drive_status(drive)
         result.append(drive_dict)
-    
-    return result
 
-@router.put("/drives/{drive_id}/approve", response_model=DriveResponse)
-def approve_drive(
-    drive_id: int,
-    approval_data: AdminDriveApprovalUpdate,
-    db: Session = Depends(get_db),
-    admin: dict = Depends(get_admin_user)
-):
-    """Approve or reject drive"""
-    drive = db.query(Drive).filter(Drive.id == drive_id).first()
-    if not drive:
-        raise HTTPException(status_code=404, detail="Drive not found")
-    
-    drive.is_approved = approval_data.is_approved
-    drive.admin_notes = approval_data.admin_notes
-    
-    if approval_data.is_approved:
-        drive.status = "approved"
-    else:
-        drive.status = "rejected"
-    
-    db.commit()
-    db.refresh(drive)
-    
-    return format_drive_response(drive, db)
+    return result
 
 @router.put("/drives/{drive_id}/suspend")
 def suspend_drive(
@@ -234,6 +281,19 @@ def suspend_drive(
     drive.status = "suspended"
     drive.actual_window_start = None
     drive.actual_window_end = None
+
+    # Notify the company
+    notif = Notification(
+        company_id=drive.company_id,
+        type="drive_status",
+        title=f"Drive '{drive.title}' has been suspended",
+        message=(
+            f"Your drive '{drive.title}' has been suspended by the admin. "
+            f"{deleted_responses} student response(s) were cleared. "
+            "Please contact support if you believe this is an error."
+        ),
+    )
+    db.add(notif)
     
     db.commit()
     db.refresh(drive)
@@ -265,7 +325,7 @@ def reactivate_drive(
     if drive.status != "suspended":
         raise HTTPException(status_code=400, detail="Only suspended drives can be reactivated")
     
-    drive.status = "approved"
+    drive.status = "upcoming"
     
     db.commit()
     db.refresh(drive)
@@ -704,7 +764,7 @@ def get_exam_status_admin(
     # Exam state
     if not drive.actual_window_start:
         exam_state = "not_started"
-    elif now >= drive.actual_window_end:
+    elif drive.actual_window_end and now >= drive.actual_window_end:
         exam_state = "ended"
     else:
         exam_state = "ongoing"
@@ -719,7 +779,7 @@ def get_exam_status_admin(
         "exam_duration_minutes": drive.exam_duration_minutes,
         "time_remaining": time_remaining_seconds,
         "time_remaining_minutes": time_remaining_minutes,
-        "can_start": drive.is_approved and not drive.actual_window_start and has_students,
+        "can_start": get_drive_status(drive) == "upcoming" and not drive.actual_window_start and has_students,
         "can_end": drive.actual_window_start and drive.actual_window_end and now < drive.actual_window_end,
         "is_approved": drive.is_approved,
         "has_students": has_students,

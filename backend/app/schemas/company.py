@@ -1,30 +1,74 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
+
+
+PLAN_LIMITS = {
+    "free": 2,
+    "basic": 5,
+    "pro": 10,
+    "premium": 15,
+}
+
 
 class CompanyResponse(BaseModel):
     id: int
-    company_name: str  # Changed from 'name' to 'company_name'
-    username: str  # Added username field
+    company_name: str
+    username: str
     email: str
     logo_url: Optional[str] = None
     is_approved: bool
-    status: Optional[str] = "pending"
+    status: Optional[str] = "approved"
     admin_notes: Optional[str] = None
     reviewed_at: Optional[datetime] = None
     reviewed_by: Optional[str] = None
+    # Plan info
+    plan: str = "free"
+    drives_limit: int = 2
+    drives_used: int = 0
+    plan_expires_at: Optional[datetime] = None
+    plan_updated_at: Optional[datetime] = None
     created_at: datetime
-    updated_at: Optional[datetime] = None  # Added missing updated_at field
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+
+class CompanyProfileResponse(BaseModel):
+    """Slim profile response for /company/profile"""
+    id: int
+    company_name: str
+    username: str
+    email: str
+    logo_url: Optional[str] = None
+    plan: str
+    drives_limit: int
+    drives_used: int
+    drives_remaining: int
+    plan_expires_at: Optional[datetime] = None
+    plan_updated_at: Optional[datetime] = None
+    plan_active: bool  # False when plan is expired (falls back to free rules)
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CompanyPlanUpdate(BaseModel):
+    """Admin sets the plan for a company"""
+    plan: str  # free, basic, pro, premium, custom
+    drives_limit: Optional[int] = None  # Required when plan=custom, ignored otherwise
+
 
 class CompanyApprovalUpdate(BaseModel):
     is_approved: bool
     notes: Optional[str] = None
 
+
 class CollegeCreate(BaseModel):
     name: str
+
 
 class CollegeResponse(BaseModel):
     id: int
@@ -35,8 +79,10 @@ class CollegeResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
 class StudentGroupCreate(BaseModel):
     name: str
+
 
 class StudentGroupResponse(BaseModel):
     id: int
@@ -46,3 +92,20 @@ class StudentGroupResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class NotificationResponse(BaseModel):
+    id: int
+    company_id: int
+    type: str  # plan_change, drive_status, admin_message
+    title: str
+    message: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AdminNotifyRequest(BaseModel):
+    title: str
+    message: str
