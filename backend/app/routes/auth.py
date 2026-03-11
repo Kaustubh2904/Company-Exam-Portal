@@ -107,9 +107,8 @@ def company_register(
         email=email,
         hashed_password=hashed_password,
         logo_url=f"/static/logos/{filename}",
-        # Auto-approve on registration with free plan
+        # Auto-approved on registration with free plan
         status="approved",
-        is_approved=True,
         plan="free",
         drives_limit=2,
         drives_used=0,

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
@@ -26,9 +26,7 @@ class Drive(Base):
     exam_duration_minutes = Column(Integer, nullable=False)  # How long each student gets
     duration_minutes = Column(Integer, nullable=True)
 
-    status = Column(String, default="draft")  # draft, submitted, approved, rejected, upcoming, live, completed, suspended
-    is_approved = Column(Boolean, default=False)
-    admin_notes = Column(Text, nullable=True)
+    status = Column(String, default="draft")  # draft, upcoming, live, ended, suspended
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

@@ -89,10 +89,6 @@ def suspend_company(
         raise HTTPException(status_code=400, detail="Company is already suspended")
 
     company.status = "suspended"
-    company.is_approved = False
-    company.admin_notes = (data or {}).get("reason", "Suspended by admin")
-    company.reviewed_at = datetime.utcnow()
-    company.reviewed_by = admin.username
 
     db.commit()
     db.refresh(company)
@@ -113,9 +109,6 @@ def unsuspend_company(
         raise HTTPException(status_code=400, detail="Company is not suspended")
 
     company.status = "approved"
-    company.is_approved = True
-    company.reviewed_at = datetime.utcnow()
-    company.reviewed_by = admin.username
 
     db.commit()
     db.refresh(company)
@@ -781,7 +774,6 @@ def get_exam_status_admin(
         "time_remaining_minutes": time_remaining_minutes,
         "can_start": get_drive_status(drive) == "upcoming" and not drive.actual_window_start and has_students,
         "can_end": drive.actual_window_start and drive.actual_window_end and now < drive.actual_window_end,
-        "is_approved": drive.is_approved,
         "has_students": has_students,
         "student_count": student_count
     }

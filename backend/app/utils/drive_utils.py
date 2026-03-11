@@ -77,8 +77,6 @@ def format_drive_response(drive: Drive, db: Session) -> dict:
         "exam_duration_minutes": drive.exam_duration_minutes,
         "duration_minutes": drive.duration_minutes,
         "status": get_drive_status(drive),
-        "is_approved": drive.is_approved,
-        "admin_notes": drive.admin_notes,
         "created_at": drive.created_at,
         "updated_at": drive.updated_at
     }

@@ -34,10 +34,10 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         user = db.query(Admin).filter(Admin.id == user_id).first()
     elif user_type == "company":
         user = db.query(Company).filter(Company.id == user_id).first()
-        if user and not user.is_approved:
+        if user and user.status == "suspended":
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Company account not approved"
+                detail="Company account is suspended"
             )
     else:
         raise HTTPException(

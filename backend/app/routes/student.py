@@ -194,13 +194,6 @@ def start_exam(
             detail="Exam window has closed. No new exams can be started."
         )
 
-    # Check if drive is approved and not suspended
-    if not drive.is_approved:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Drive is not approved yet"
-        )
-
     if drive.status == "suspended":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

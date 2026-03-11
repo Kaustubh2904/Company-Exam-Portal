@@ -17,11 +17,7 @@ class CompanyResponse(BaseModel):
     username: str
     email: str
     logo_url: Optional[str] = None
-    is_approved: bool
     status: Optional[str] = "approved"
-    admin_notes: Optional[str] = None
-    reviewed_at: Optional[datetime] = None
-    reviewed_by: Optional[str] = None
     # Plan info
     plan: str = "free"
     drives_limit: int = 2
@@ -59,11 +55,6 @@ class CompanyPlanUpdate(BaseModel):
     """Admin sets the plan for a company"""
     plan: str  # free, basic, pro, premium, custom
     drives_limit: Optional[int] = None  # Required when plan=custom, ignored otherwise
-
-
-class CompanyApprovalUpdate(BaseModel):
-    is_approved: bool
-    notes: Optional[str] = None
 
 
 class CollegeCreate(BaseModel):

@@ -725,7 +725,6 @@ def get_email_status(
     return {
         "drive_id": drive_id,
         "drive_title": drive.title,
-        "is_approved": drive.is_approved,
         "student_count": student_count,
         "can_send_emails": can_send,
         "status_message": status_message,
@@ -1115,7 +1114,6 @@ def get_exam_status(
         "can_start": get_drive_status(drive) == "upcoming" and not drive.actual_window_start and has_students,
         "can_end": drive.actual_window_start and drive.actual_window_end and now < drive.actual_window_end,
         "status": get_drive_status(drive),
-        "is_approved": drive.is_approved,
         "has_students": has_students,
         "student_count": student_count
     }

@@ -17,12 +17,6 @@ class Company(Base):
 
     # Status — companies are auto-approved on registration
     status = Column(String, default="approved")  # approved, suspended
-    admin_notes = Column(Text, nullable=True)
-    reviewed_at = Column(DateTime, nullable=True)
-    reviewed_by = Column(String, nullable=True)
-
-    # Legacy field kept for backward compatibility
-    is_approved = Column(Boolean, default=True)
 
     # Plan-based drive access
     plan = Column(String, default="free")  # free, basic, pro, premium, custom
