@@ -9,10 +9,10 @@ from app.models.student import Student
 from app.models.student_response import StudentResponse as StudentResponseModel
 from app.models.notification import Notification
 from app.schemas.company import (
-    CompanyResponse, CompanyApprovalUpdate, CollegeResponse, StudentGroupResponse,
+    CompanyResponse, CollegeResponse, StudentGroupResponse,
     CompanyPlanUpdate, NotificationResponse, AdminNotifyRequest, PLAN_LIMITS
 )
-from app.schemas.drive import DriveResponse, AdminDriveApprovalUpdate
+from app.schemas.drive import DriveResponse
 from app.auth import get_admin_user
 from app.utils.drive_utils import get_drive_status, format_drive_response
 

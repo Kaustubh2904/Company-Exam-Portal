@@ -13,7 +13,7 @@ from app.database.config import settings
 from app.models import Drive, Question, Student, College, StudentGroup, DriveTarget, Company
 from app.models.student_response import StudentResponse as StudentResponseModel
 from app.models.notification import Notification
-from app.schemas.drive import DriveCreate, DriveUpdate, DriveResponse, DriveStatusUpdate
+from app.schemas.drive import DriveCreate, DriveUpdate, DriveResponse
 from app.schemas.question import QuestionResponse
 from app.schemas.student import StudentResponse
 from app.schemas.email import (
