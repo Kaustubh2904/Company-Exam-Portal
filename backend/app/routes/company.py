@@ -586,8 +586,9 @@ def email_students(
         raise HTTPException(status_code=404, detail="Drive not found")
 
     drive_status = get_drive_status(drive)
-    if drive_status not in ("upcoming", "live"):
-        raise HTTPException(status_code=400, detail="Drive must be published (upcoming or live) before emailing students")
+    # Only allow sending emails while drive is in 'upcoming' state
+    if drive_status != "upcoming":
+        raise HTTPException(status_code=400, detail="Drive must be in 'upcoming' status before emailing students")
 
     # Get students
     students = db.query(Student).filter(Student.drive_id == drive_id).all()
@@ -712,11 +713,13 @@ def get_email_status(
         template_preview = {"subject": "Template not found", "body": ""}
 
     drive_status_val = get_drive_status(drive)
-    can_send = drive_status_val in ("upcoming", "live") and student_count > 0 and email_configured
+    # Only upcoming drives are allowed to send emails now
+    can_send = drive_status_val == "upcoming" and student_count > 0 and email_configured
 
     status_message = (
         "Ready to send emails" if can_send
         else "Drive not published yet" if drive_status_val == "draft"
+        else "Emails can only be sent before exam starts (upcoming status)" if drive_status_val == "live"
         else "No students found" if student_count == 0
         else "Email not configured" if not email_configured
         else "Unknown error"
