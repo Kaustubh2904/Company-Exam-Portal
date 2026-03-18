@@ -728,6 +728,7 @@ def get_email_status(
     return {
         "drive_id": drive_id,
         "drive_title": drive.title,
+        "is_approved": (company_obj.status == "approved") if company_obj else False,
         "student_count": student_count,
         "can_send_emails": can_send,
         "status_message": status_message,
