@@ -91,6 +91,7 @@ class NotificationResponse(BaseModel):
     type: str  # plan_change, drive_status, admin_message
     title: str
     message: str
+    is_read: bool = False
     created_at: datetime
 
     class Config:

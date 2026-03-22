@@ -1404,3 +1404,42 @@ def get_notifications(
         .all()
     )
     return notifications
+
+@router.put("/notifications/{notification_id}/read")
+def mark_notification_as_read(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    company: dict = Depends(get_company_user)
+):
+    """Mark a specific notification as read"""
+    notification = db.query(Notification).filter(
+        Notification.id == notification_id,
+        Notification.company_id == company.id
+    ).first()
+
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notification not found")
+
+    notification.is_read = True
+    db.commit()
+    
+    return {"success": True, "message": "Notification marked as read"}
+
+@router.put("/notifications/read-all")
+def mark_all_notifications_as_read(
+    db: Session = Depends(get_db),
+    company: dict = Depends(get_company_user)
+):
+    """Mark all unread notifications as read for the authenticated company"""
+    notifications = db.query(Notification).filter(
+        Notification.company_id == company.id,
+        Notification.is_read == False
+    ).all()
+
+    count = len(notifications)
+    if count > 0:
+        for notification in notifications:
+            notification.is_read = True
+        db.commit()
+
+    return {"success": True, "message": f"{count} notifications marked as read", "updated_count": count}
