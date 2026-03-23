@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Header
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Header, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -8,6 +8,8 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
+import logging
+import time
 from app.database.connection import get_db
 from app.database.config import settings
 from app.models import Drive, Question, Student, College, StudentGroup, DriveTarget, Company
@@ -26,6 +28,87 @@ from app.utils.email_processor import EmailTemplateProcessor, TEMPLATE_VARIABLES
 from app.utils.drive_utils import get_drive_status, format_drive_response
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+def run_bulk_email_task(
+    students_data: list,
+    drive_data: dict,
+    company_data: dict,
+    smtp_settings: dict
+):
+    """
+    Background worker that actually sends the emails with retry logic.
+    """
+    logger.info(f"Starting bulk email task for {len(students_data)} students.")
+    
+    consecutive_hard_fails = 0
+    MAX_CONSECUTIVE_FAILS = 5
+    
+    for student in students_data:
+        # If the server/network crashed 5 times in a row, stop entirely.
+        if consecutive_hard_fails >= MAX_CONSECUTIVE_FAILS:
+            logger.error("Too many consecutive SMTP connection failures. Aborting background email task.")
+            break
+
+        # Render content once per student
+        email_variables = {**student, **drive_data, **company_data}
+        subject = EmailTemplateProcessor.render_template(
+            company_data["subject_template"], email_variables
+        )
+        body = EmailTemplateProcessor.render_template(
+            company_data["body_template"], email_variables
+        )
+
+        message = MIMEMultipart()
+        message["From"] = f"{smtp_settings['from_name']} <{smtp_settings['username']}>"
+        message["To"] = student["email"]
+        message["Subject"] = subject
+        message.attach(MIMEText(body, "plain"))
+
+        # 2-try retry logic
+        MAX_TRIES = 2
+        success = False
+        
+        for attempt in range(1, MAX_TRIES + 1):
+            server = None
+            try:
+                # Open a FRESH connection for each email to prevent stale timeouts
+                server = smtplib.SMTP(smtp_settings["server"], smtp_settings["port"], timeout=10)
+                server.starttls()
+                server.login(smtp_settings["username"], smtp_settings["password"])
+                
+                # Send the email
+                server.send_message(message)
+                
+                # Success!
+                success = True
+                consecutive_hard_fails = 0 # Reset panic circuit breaker
+                logger.info(f"Sent email to {student['email']} (Attempt {attempt})")
+                break # BREAK OUT OF THE RETRY LOOP - We don't need attempt #2
+                
+            except Exception as e:
+                logger.warning(f"Error sending to {student['email']} (Attempt {attempt}): {str(e)}")
+                # If this is the first try, wait 1 second before trying again
+                if attempt < MAX_TRIES:
+                    time.sleep(1)
+            finally:
+                # Always safely close the server connection for this attempt
+                if server:
+                    try:
+                        server.quit()
+                    except:
+                        pass
+        
+        # If it failed all tries, record a hard fail
+        if not success:
+            logger.error(f"Failed to send to {student['email']} after {MAX_TRIES} attempts.")
+            consecutive_hard_fails += 1
+            
+        # Optional: Add a tiny sleep between successful emails to avoid Google rate limits
+        time.sleep(0.5)
+
+    logger.info("Bulk email task completed/exited.")
+
 
 def get_effective_company_id(
     current_user: dict = Depends(get_company_or_admin_user),
@@ -565,10 +648,11 @@ def preview_email_template(
 @router.post("/drives/{drive_id}/email-students", response_model=EmailSendResponse)
 def email_students(
     drive_id: int,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     company: dict = Depends(get_company_user)
 ):
-    """Send login credentials to students via email (only for approved drives)"""
+    """Send login credentials to students via email (Background Task)"""
     # Validate email configuration
     if not settings.smtp_username or not settings.smtp_password:
         raise HTTPException(
@@ -586,7 +670,6 @@ def email_students(
         raise HTTPException(status_code=404, detail="Drive not found")
 
     drive_status = get_drive_status(drive)
-    # Only allow sending emails while drive is in 'upcoming' state
     if drive_status != "upcoming":
         raise HTTPException(status_code=400, detail="Drive must be in 'upcoming' status before emailing students")
 
@@ -600,76 +683,63 @@ def email_students(
     if not company_obj:
         raise HTTPException(status_code=404, detail="Company not found")
 
-    try:
-        # Create SMTP session
-        server = smtplib.SMTP(settings.smtp_server, settings.smtp_port)
-        server.starttls()
-        server.login(settings.smtp_username, settings.smtp_password)
+    # 1. Package the specific SMTP settings needed
+    smtp_settings = {
+        "server": settings.smtp_server,
+        "port": settings.smtp_port,
+        "username": settings.smtp_username,
+        "password": settings.smtp_password,
+        "from_name": settings.smtp_from_name
+    }
 
-        sent_count = 0
-        failed_emails = []
+    # 2. Package Company Data
+    company_data = {
+        "company_name": company_obj.company_name,
+        "company_email": company_obj.email,
+        "subject_template": company_obj.email_subject_template,
+        "body_template": company_obj.email_body_template,
+    }
 
-        for student in students:
-            try:
-                # Prepare email variables
-                email_variables = EmailTemplateProcessor.prepare_email_variables(
-                    student, drive, company_obj
-                )
+    # 3. Package Drive Data
+    drive_data = {
+        "drive_title": drive.title,
+        "drive_category": drive.category,
+        "exam_duration_minutes": drive.exam_duration_minutes,
+        "frontend_url": settings.frontend_url, # Adding default just in case template needs it
+    }
 
-                # Render email content
-                subject = EmailTemplateProcessor.render_template(
-                    company_obj.email_subject_template,
-                    email_variables
-                )
-                body = EmailTemplateProcessor.render_template(
-                    company_obj.email_body_template,
-                    email_variables
-                )
+    # 4. Package all students into flat dictionaries (no DB objects)
+    student_data_list = []
+    for s in students:
+        # Replicate what EmailTemplateProcessor.prepare_email_variables does, 
+        # but safely as raw dicts that won't detach.
+        student_data_list.append({
+            "student_name": s.name,
+            "student_email": s.email, # Needed for the 'To' header
+            "email": s.email, # Included simply so prepare_email_variables template uses it smoothly
+            "student_roll": s.roll_number,
+            "exam_link": f"{settings.frontend_url}/login?token={s.access_token}",
+            "access_token": s.access_token
+        })
 
-                # Create email message
-                message = MIMEMultipart()
-                message["From"] = f"{settings.smtp_from_name} <{settings.smtp_username}>"
-                message["To"] = student.email
-                message["Subject"] = subject
+    # Kick off the background task
+    background_tasks.add_task(
+        run_bulk_email_task,
+        student_data_list,
+        drive_data,
+        company_data,
+        smtp_settings
+    )
 
-                # Attach body
-                message.attach(MIMEText(body, "plain"))
-
-                # Send email
-                server.send_message(message)
-                sent_count += 1
-
-            except Exception as e:
-                failed_emails.append({
-                    "student_roll": student.roll_number,
-                    "student_email": student.email,
-                    "error": str(e)
-                })
-
-        # Close SMTP session
-        server.quit()
-
-        return {
-            "success": True,
-            "message": f"Email sending completed",
-            "sent_count": sent_count,
-            "failed_count": len(failed_emails),
-            "total_students": len(students),
-            "failed_emails": failed_emails
-        }
-
-    except smtplib.SMTPAuthenticationError:
-        raise HTTPException(
-            status_code=400,
-            detail="Email authentication failed. Please check SMTP credentials."
-        )
-    except smtplib.SMTPConnectError:
-        raise HTTPException(
-            status_code=500,
-            detail="Could not connect to SMTP server. Please check your internet connection."
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Email server error: {str(e)}")
+    # Return INSTANTLY
+    return {
+        "success": True,
+        "message": f"Queued {len(students)} emails for background sending. They will be sent shortly.",
+        "sent_count": 0, # They are queued, not sent yet.
+        "failed_count": 0,
+        "total_students": len(students),
+        "failed_emails": []
+    }
 
 @router.get("/drives/{drive_id}/email-status", response_model=EmailStatusResponse)
 def get_email_status(
