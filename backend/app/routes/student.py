@@ -131,6 +131,11 @@ def get_drive_info(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Drive not found"
         )
+        
+    # Get all questions for this drive to calculate total_questions and total_marks
+    all_questions = db.query(Question).filter(Question.drive_id == drive.id).all()
+    total_questions = len(all_questions)
+    total_marks = sum(q.points for q in all_questions)
 
     return {
         "id": drive.id,
@@ -142,7 +147,9 @@ def get_drive_info(
         "window_end": drive.window_end,
         "actual_window_start": drive.actual_window_start,
         "actual_window_end": drive.actual_window_end,
-        "status": get_drive_status(drive)  # Use calculated status
+        "status": get_drive_status(drive),  # Use calculated status
+        "total_questions": total_questions,
+        "total_marks": total_marks
     }
 
 
