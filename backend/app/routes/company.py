@@ -32,8 +32,8 @@ logger = logging.getLogger(__name__)
 
 def run_bulk_email_task(
     students_data: list,
-    drive_data: dict,
-    company_data: dict,
+    subject_template: str,
+    body_template: str,
     smtp_settings: dict
 ):
     """
@@ -50,18 +50,15 @@ def run_bulk_email_task(
             logger.error("Too many consecutive SMTP connection failures. Aborting background email task.")
             break
 
-        # Render content once per student
-        email_variables = {**student, **drive_data, **company_data}
-        subject = EmailTemplateProcessor.render_template(
-            company_data["subject_template"], email_variables
-        )
-        body = EmailTemplateProcessor.render_template(
-            company_data["body_template"], email_variables
-        )
+        # Render content once per student using prepared variables
+        email_variables = student  # student is already a dict from prepare_email_variables
+        subject = EmailTemplateProcessor.render_template(subject_template, email_variables)
+        body = EmailTemplateProcessor.render_template(body_template, email_variables)
 
         message = MIMEMultipart()
         message["From"] = f"{smtp_settings['from_name']} <{smtp_settings['username']}>"
-        message["To"] = student["email"]
+        # Use the standard variable name produced by prepare_email_variables
+        message["To"] = student.get("student_email") or student.get("email")
         message["Subject"] = subject
         message.attach(MIMEText(body, "plain"))
 
@@ -83,11 +80,11 @@ def run_bulk_email_task(
                 # Success!
                 success = True
                 consecutive_hard_fails = 0 # Reset panic circuit breaker
-                logger.info(f"Sent email to {student['email']} (Attempt {attempt})")
+                logger.info(f"Sent email to {student.get('student_email') or student.get('email')} (Attempt {attempt})")
                 break # BREAK OUT OF THE RETRY LOOP - We don't need attempt #2
                 
             except Exception as e:
-                logger.warning(f"Error sending to {student['email']} (Attempt {attempt}): {str(e)}")
+                logger.warning(f"Error sending to {student.get('student_email') or student.get('email')} (Attempt {attempt}): {str(e)}")
                 # If this is the first try, wait 1 second before trying again
                 if attempt < MAX_TRIES:
                     time.sleep(1)
@@ -101,7 +98,7 @@ def run_bulk_email_task(
         
         # If it failed all tries, record a hard fail
         if not success:
-            logger.error(f"Failed to send to {student['email']} after {MAX_TRIES} attempts.")
+            logger.error(f"Failed to send to {student.get('student_email') or student.get('email')} after {MAX_TRIES} attempts.")
             consecutive_hard_fails += 1
             
         # Optional: Add a tiny sleep between successful emails to avoid Google rate limits
@@ -692,42 +689,24 @@ def email_students(
         "from_name": settings.smtp_from_name
     }
 
-    # 2. Package Company Data
-    company_data = {
-        "company_name": company_obj.company_name,
-        "company_email": company_obj.email,
-        "subject_template": company_obj.email_subject_template,
-        "body_template": company_obj.email_body_template,
-    }
+    # Prepare templates and per-student variables using the processor
+    subject_template = company_obj.email_subject_template
+    body_template = company_obj.email_body_template
 
-    # 3. Package Drive Data
-    drive_data = {
-        "drive_title": drive.title,
-        "drive_category": drive.category,
-        "exam_duration_minutes": drive.exam_duration_minutes,
-        "frontend_url": settings.frontend_url, # Adding default just in case template needs it
-    }
-
-    # 4. Package all students into flat dictionaries (no DB objects)
+    # 4. Build per-student variable dicts using EmailTemplateProcessor
     student_data_list = []
     for s in students:
-        # Replicate what EmailTemplateProcessor.prepare_email_variables does, 
-        # but safely as raw dicts that won't detach.
-        student_data_list.append({
-            "student_name": s.name,
-            "student_email": s.email, # Needed for the 'To' header
-            "email": s.email, # Included simply so prepare_email_variables template uses it smoothly
-            "student_roll": s.roll_number,
-            "exam_link": f"{settings.frontend_url}/login?token={s.access_token}",
-            "access_token": s.access_token
-        })
+        vars_dict = EmailTemplateProcessor.prepare_email_variables(s, drive, company_obj)
+        # ensure the 'student_email' key exists for message 'To'
+        vars_dict.setdefault('student_email', s.email)
+        student_data_list.append(vars_dict)
 
-    # Kick off the background task
+    # Kick off the background task using templates
     background_tasks.add_task(
         run_bulk_email_task,
         student_data_list,
-        drive_data,
-        company_data,
+        subject_template,
+        body_template,
         smtp_settings
     )
 
