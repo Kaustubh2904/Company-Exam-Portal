@@ -432,8 +432,7 @@ def duplicate_drive(
         window_end=None,
         exam_duration_minutes=original_drive.exam_duration_minutes,
         duration_minutes=None,
-        status="draft",
-        is_approved=False
+        status="draft"
     )
 
     db.add(new_drive)
@@ -450,40 +449,6 @@ def duplicate_drive(
             batch_year=target.batch_year
         )
         db.add(new_target)
-
-    # Copy all questions
-    original_questions = db.query(Question).filter(Question.drive_id == drive_id).all()
-    for question in original_questions:
-        new_question = Question(
-            drive_id=new_drive.id,
-            question_text=question.question_text,
-            option_a=question.option_a,
-            option_b=question.option_b,
-            option_c=question.option_c,
-            option_d=question.option_d,
-            correct_answer=question.correct_answer,
-            points=question.points
-        )
-        db.add(new_question)
-
-    # Copy pre-exam students (only those who have not started the exam yet)
-    original_students = db.query(Student).filter(
-        Student.drive_id == drive_id,
-        Student.exam_started_at == None
-    ).all()
-    for student in original_students:
-        new_student = Student(
-            drive_id=new_drive.id,
-            company_id=company.id,
-            name=student.name,
-            email=student.email,
-            roll_number=student.roll_number,
-            phone=student.phone,
-            college_name=student.college_name,
-            student_group_name=student.student_group_name,
-            access_token=student.access_token
-        )
-        db.add(new_student)
 
     db.commit()
     db.refresh(new_drive)
