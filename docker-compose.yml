@@ -50,7 +50,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - static_files:/app/static
+      - ./backend/static:/app/static
     depends_on:
       db:
         condition: service_healthy
@@ -68,7 +68,6 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  static_files:
 
 networks:
   backend_net:
