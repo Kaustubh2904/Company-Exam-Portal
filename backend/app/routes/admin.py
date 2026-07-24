@@ -140,6 +140,7 @@ def set_company_plan(
 
     company.plan = plan_data.plan
     company.drives_limit = new_limit
+    company.drives_used = 0
     company.plan_updated_at = datetime.utcnow()
 
     # Set expiry 30 days from now for non-free plans
