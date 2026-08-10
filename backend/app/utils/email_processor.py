@@ -41,7 +41,7 @@ class EmailTemplateProcessor:
             'drive_title': 'Software Engineer Position',
             'company_name': 'TechCorp Solutions',
             'password': 'SoftwareEngineer2024',
-            'login_url': settings.frontend_url,
+            'login_url': f"{settings.frontend_url.rstrip('/')}/login",
             'start_time': 'December 15, 2024 at 10:00 AM',
             'duration': '90'
         }
@@ -102,7 +102,7 @@ class EmailTemplateProcessor:
             'drive_title': drive.title,
             'company_name': company.company_name,
             'password': EmailTemplateProcessor.generate_password(drive.title),
-            'login_url': settings.frontend_url,  # Student portal URL
+            'login_url': f"{settings.frontend_url.rstrip('/')}/login",  # Student login page
             'start_time': EmailTemplateProcessor.format_datetime(drive.window_start),
             'duration': str(drive.exam_duration_minutes or 60)
         }
